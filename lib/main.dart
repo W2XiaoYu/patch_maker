@@ -11,15 +11,15 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const CupertinoApp(
-     theme: CupertinoThemeData(
-       textTheme: CupertinoTextThemeData(
-         textStyle: TextStyle(fontFamily: '微软雅黑', color: CupertinoColors.black,),
-
-       ),
-     ),
+      theme: CupertinoThemeData(
+        textTheme: CupertinoTextThemeData(
+          textStyle: TextStyle(
+            fontFamily: '微软雅黑',
+            color: CupertinoColors.black,
+          ),
+        ),
+      ),
       home: PatchMakerWidget(),
     );
   }
 }
-
-
