@@ -21,14 +21,14 @@ class LanguageSelector extends StatelessWidget {
         children: [
           Icon(
             CupertinoIcons.globe,
-            color: CupertinoColors.activeBlue,
+            color: CupertinoTheme.of(context).primaryColor,
             size: 20.0,
           ),
           const SizedBox(width: 4),
           Text(
             currentLocale.languageCode == 'zh' ? '中文' : 'English',
-            style: const TextStyle(
-              color: CupertinoColors.activeBlue,
+            style: TextStyle(
+              color: CupertinoTheme.of(context).primaryColor,
               fontSize: 14.0,
             ),
           ),

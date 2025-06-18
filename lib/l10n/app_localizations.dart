@@ -59,6 +59,11 @@ class AppLocalizations {
       'scriptFileNotFound': 'Error: Script file not found',
       'fillAllRequiredFields': 'Error: Please fill in all required directories.',
       'ensureGoExecutableExists': 'Please ensure the Go executable exists and the path is correct.',
+      'selectTheme': 'Select Theme',
+      'lightTheme': 'Light',
+      'darkTheme': 'Dark',
+      'systemTheme': 'System',
+      'cancel': 'Cancel',
     },
     'zh': {
       'appTitle': '更新补丁生成器',
@@ -78,6 +83,11 @@ class AppLocalizations {
       'scriptFileNotFound': '错误：未找到脚本文件',
       'fillAllRequiredFields': '错误：请填写所有必填目录和版本标签。',
       'ensureGoExecutableExists': '请确保Go可执行文件存在且路径正确。',
+      'selectTheme': '选择主题',
+      'lightTheme': '浅色',
+      'darkTheme': '深色',
+      'systemTheme': '跟随系统',
+      'cancel': '取消',
     },
   };
 
@@ -98,4 +108,9 @@ class AppLocalizations {
   String get scriptFileNotFound => _localizedValues[locale.languageCode]!['scriptFileNotFound']!;
   String get fillAllRequiredFields => _localizedValues[locale.languageCode]!['fillAllRequiredFields']!;
   String get ensureGoExecutableExists => _localizedValues[locale.languageCode]!['ensureGoExecutableExists']!;
+  String get selectTheme => _localizedValues[locale.languageCode]!['selectTheme']!;
+  String get lightTheme => _localizedValues[locale.languageCode]!['lightTheme']!;
+  String get darkTheme => _localizedValues[locale.languageCode]!['darkTheme']!;
+  String get systemTheme => _localizedValues[locale.languageCode]!['systemTheme']!;
+  String get cancel => _localizedValues[locale.languageCode]!['cancel']!;
 }

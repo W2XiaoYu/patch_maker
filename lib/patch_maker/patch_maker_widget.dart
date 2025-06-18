@@ -1,20 +1,26 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:path/path.dart' as path;
+import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as path;
 import 'package:patch_maker/l10n/app_localizations.dart';
 import 'package:patch_maker/l10n/language_selector.dart';
+import 'package:patch_maker/theme/app_theme.dart';
+import 'package:patch_maker/theme/theme_selector.dart';
 import 'package:patch_maker/utils/common.dart';
 
 class PatchMakerWidget extends StatefulWidget {
   final Function(Locale) onLocaleChanged;
   final Locale currentLocale;
+  final Function(ThemeMode) onThemeChanged;
+  final ThemeMode currentThemeMode;
 
   const PatchMakerWidget({
     super.key,
     required this.onLocaleChanged,
     required this.currentLocale,
+    required this.onThemeChanged,
+    required this.currentThemeMode,
   });
 
   @override
@@ -172,9 +178,19 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: Text(AppLocalizations.of(context).appTitle),
-        trailing: LanguageSelector(
-          onLocaleChanged: widget.onLocaleChanged,
-          currentLocale: widget.currentLocale,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ThemeSelector(
+              onThemeChanged: widget.onThemeChanged,
+              currentThemeMode: widget.currentThemeMode,
+            ),
+            const SizedBox(width: 8),
+            LanguageSelector(
+              onLocaleChanged: widget.onLocaleChanged,
+              currentLocale: widget.currentLocale,
+            ),
+          ],
         ),
       ),
       child: SafeArea(
@@ -232,9 +248,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                 width: double.infinity, // 确保宽度占满
                 height: 200, // 固定高度的日志区域
                 decoration: BoxDecoration(
-                  color: CupertinoColors.systemBackground,
+                  color: AppTheme().getLogContainerBackgroundColor(context),
                   borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: CupertinoColors.systemGrey4),
+                  border: Border.all(color: AppTheme().getTextFieldBorderColor(context)),
                 ),
                 child: SingleChildScrollView(
                   controller: _scrollController,
@@ -243,7 +259,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                     _statusMessage,
                     style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
                       fontSize: 14.0,
-                      color: CupertinoColors.systemGrey,
+                      color: AppTheme().getLogTextColor(context),
                     ),
                   ),
                 ),
@@ -266,7 +282,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           labelText,
           style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
             fontSize: 13.0,
-            color: CupertinoColors.systemGrey,
+            color: CupertinoTheme.of(context).textTheme.textStyle.color!.withOpacity(0.7),
           ),
         ),
         const SizedBox(height: 6),
@@ -282,9 +298,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                 ),
                 style: CupertinoTheme.of(context).textTheme.textStyle,
                 decoration: BoxDecoration(
-                  color: CupertinoColors.white,
+                  color: AppTheme().getTextFieldBackgroundColor(context),
                   borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: CupertinoColors.systemGrey4),
+                  border: Border.all(color: AppTheme().getTextFieldBorderColor(context)),
                 ),
                 clearButtonMode: OverlayVisibilityMode.editing,
               ),
@@ -293,10 +309,10 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
             CupertinoButton(
               onPressed: () => _pickDirectory(controller),
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: const Icon(
+              child: Icon(
                 CupertinoIcons.folder_open,
                 size: 24.0,
-                color: CupertinoColors.activeBlue,
+                color: CupertinoTheme.of(context).primaryColor,
               ),
             ),
           ],
@@ -316,7 +332,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           labelText,
           style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
             fontSize: 13.0,
-            color: CupertinoColors.systemGrey,
+            color: CupertinoTheme.of(context).textTheme.textStyle.color!.withOpacity(0.7),
           ),
         ),
         const SizedBox(height: 6),
@@ -326,9 +342,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
           style: CupertinoTheme.of(context).textTheme.textStyle,
           decoration: BoxDecoration(
-            color: CupertinoColors.white,
+            color: AppTheme().getTextFieldBackgroundColor(context),
             borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(color: CupertinoColors.systemGrey4),
+            border: Border.all(color: AppTheme().getTextFieldBorderColor(context)),
           ),
           clearButtonMode: OverlayVisibilityMode.editing,
         ),
