@@ -3,10 +3,19 @@ import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:flutter/cupertino.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:patch_maker/l10n/app_localizations.dart';
+import 'package:patch_maker/l10n/language_selector.dart';
 import 'package:patch_maker/utils/common.dart';
 
 class PatchMakerWidget extends StatefulWidget {
-  const PatchMakerWidget({super.key});
+  final Function(Locale) onLocaleChanged;
+  final Locale currentLocale;
+
+  const PatchMakerWidget({
+    super.key,
+    required this.onLocaleChanged,
+    required this.currentLocale,
+  });
 
   @override
   State<PatchMakerWidget> createState() => _PatchMakerWidgetState();
@@ -18,9 +27,23 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
   final TextEditingController _outputDirController = TextEditingController();
   final TextEditingController _newVersionTagController =
       TextEditingController();
-  String _statusMessage = '';  
+  late String _statusMessage;  
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _statusMessage = '';
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_statusMessage.isEmpty) {
+      _statusMessage = AppLocalizations.of(context).waitingForInput;
+    }
+  }
 
   @override
   void dispose() {
@@ -62,7 +85,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
         _newDirController.text.isEmpty ||
         _outputDirController.text.isEmpty) {
       setState(() {
-        _statusMessage = '错误：请填写所有必填目录和版本标签。';
+        _statusMessage = AppLocalizations.of(context).fillAllRequiredFields;
       });
       _scrollToBottom();
       return;
@@ -70,7 +93,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
 
     setState(() {
         _isLoading = true;
-        _statusMessage = '正在生成补丁...';
+        _statusMessage = AppLocalizations.of(context).generatingPatch;
       });
       _scrollToBottom();
 
@@ -81,7 +104,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     final exe = await Common.getRenderUpdaterPath(exeName: "patch_maker.exe");
     if (exe == null) {
       setState(() {
-        _statusMessage = '错误：未找到脚本文件';
+        _statusMessage = AppLocalizations.of(context).scriptFileNotFound;
       });
       _scrollToBottom();
     }
@@ -121,19 +144,19 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       if (exitCode == 0) {
         setState(() {
           _statusMessage =
-              '补丁生成成功！\n输出:\n${stdoutBuffer.toString()}\n错误:\n${stderrBuffer.toString()}';
+              '${AppLocalizations.of(context).patchGenerationSuccess}\n${AppLocalizations.of(context).output}:\n${stdoutBuffer.toString()}\n${AppLocalizations.of(context).error}:\n${stderrBuffer.toString()}';
         });
         _scrollToBottom();
       } else {
         setState(() {
           _statusMessage =
-              '补丁生成失败！\n错误码: $exitCode\n输出:\n${stdoutBuffer.toString()}\n错误:\n${stderrBuffer.toString()}';
+              '${AppLocalizations.of(context).patchGenerationFailed}\n${AppLocalizations.of(context).errorCode}: $exitCode\n${AppLocalizations.of(context).output}:\n${stdoutBuffer.toString()}\n${AppLocalizations.of(context).error}:\n${stderrBuffer.toString()}';
         });
         _scrollToBottom();
       }
     } catch (e) {
       setState(() {
-        _statusMessage = '执行出错: $e\n请确保Go可执行文件存在且路径正确。';
+        _statusMessage = '${AppLocalizations.of(context).executionError}: $e\n${AppLocalizations.of(context).ensureGoExecutableExists}';
       });
       _scrollToBottom();
     } finally {
@@ -147,7 +170,13 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
-      navigationBar: const CupertinoNavigationBar(middle: Text("更新补丁生成器")),
+      navigationBar: CupertinoNavigationBar(
+        middle: Text(AppLocalizations.of(context).appTitle),
+        trailing: LanguageSelector(
+          onLocaleChanged: widget.onLocaleChanged,
+          currentLocale: widget.currentLocale,
+        ),
+      ),
       child: SafeArea(
         child: SingleChildScrollView(
           // 允许内容滚动，防止溢出
@@ -157,17 +186,17 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
             children: [
               _buildDirectoryRow(
                 controller: _oldDirController,
-                labelText: '旧版本目录',
+                labelText: AppLocalizations.of(context).oldVersionDir,
               ),
               const SizedBox(height: 12.0), // 增加间距
               _buildDirectoryRow(
                 controller: _newDirController,
-                labelText: '新版本目录',
+                labelText: AppLocalizations.of(context).newVersionDir,
               ),
               const SizedBox(height: 12.0),
               _buildDirectoryRow(
                 controller: _outputDirController,
-                labelText: '输出目录',
+                labelText: AppLocalizations.of(context).outputDir,
               ),
               const SizedBox(height: 24.0), // 按钮上方多一点间距
               _isLoading
@@ -181,8 +210,8 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                           horizontal: 40.0,
                           vertical: 14.0,
                         ), // 调整按钮内边距
-                        child: const Text(
-                          '生成补丁',
+                        child: Text(
+                          AppLocalizations.of(context).generatePatch,
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                           ), // 按钮文字稍粗
@@ -190,9 +219,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                       ),
                     ),
               const SizedBox(height: 24.0), // 状态消息上方多一点间距
-              const Text(
-                '日志输出:',
-                style: TextStyle(
+              Text(
+                '${AppLocalizations.of(context).logOutput}:',
+                style: const TextStyle(
                   fontSize: 14.0,
                   fontWeight: FontWeight.w600,
                   color: CupertinoColors.systemGrey,
