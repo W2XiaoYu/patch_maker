@@ -18,7 +18,8 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
   final TextEditingController _outputDirController = TextEditingController();
   final TextEditingController _newVersionTagController =
       TextEditingController();
-  String _statusMessage = '等待输入...';
+  String _statusMessage = '';  
+  final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
 
   @override
@@ -27,7 +28,22 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     _newDirController.dispose();
     _outputDirController.dispose();
     _newVersionTagController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  // 滚动到底部的辅助方法
+  void _scrollToBottom() {
+    // 使用Future.delayed确保在状态更新后滚动
+    Future.delayed(const Duration(milliseconds: 50), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   // 辅助方法，用于选择目录
@@ -48,13 +64,15 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       setState(() {
         _statusMessage = '错误：请填写所有必填目录和版本标签。';
       });
+      _scrollToBottom();
       return;
     }
 
     setState(() {
-      _isLoading = true;
-      _statusMessage = '正在生成补丁...';
-    });
+        _isLoading = true;
+        _statusMessage = '正在生成补丁...';
+      });
+      _scrollToBottom();
 
     final oldDir = _oldDirController.text;
     final newDir = _newDirController.text;
@@ -65,6 +83,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       setState(() {
         _statusMessage = '错误：未找到脚本文件';
       });
+      _scrollToBottom();
     }
     Process? process;
     try {
@@ -104,16 +123,19 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           _statusMessage =
               '补丁生成成功！\n输出:\n${stdoutBuffer.toString()}\n错误:\n${stderrBuffer.toString()}';
         });
+        _scrollToBottom();
       } else {
         setState(() {
           _statusMessage =
               '补丁生成失败！\n错误码: $exitCode\n输出:\n${stdoutBuffer.toString()}\n错误:\n${stderrBuffer.toString()}';
         });
+        _scrollToBottom();
       }
     } catch (e) {
       setState(() {
         _statusMessage = '执行出错: $e\n请确保Go可执行文件存在且路径正确。';
       });
+      _scrollToBottom();
     } finally {
       process?.kill();
       setState(() {
@@ -168,11 +190,33 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                       ),
                     ),
               const SizedBox(height: 24.0), // 状态消息上方多一点间距
-              Text(
-                _statusMessage,
-                style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-                  fontSize: 14.0, // 调整字体大小
-                  color: CupertinoColors.systemGrey, // 调整颜色
+              const Text(
+                '日志输出:',
+                style: TextStyle(
+                  fontSize: 14.0,
+                  fontWeight: FontWeight.w600,
+                  color: CupertinoColors.systemGrey,
+                ),
+              ),
+              const SizedBox(height: 8.0),
+              Container(
+                width: double.infinity, // 确保宽度占满
+                height: 200, // 固定高度的日志区域
+                decoration: BoxDecoration(
+                  color: CupertinoColors.systemBackground,
+                  borderRadius: BorderRadius.circular(8.0),
+                  border: Border.all(color: CupertinoColors.systemGrey4),
+                ),
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(12.0),
+                  child: Text(
+                    _statusMessage,
+                    style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+                      fontSize: 14.0,
+                      color: CupertinoColors.systemGrey,
+                    ),
+                  ),
                 ),
               ),
             ],
