@@ -33,7 +33,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
   final TextEditingController _outputDirController = TextEditingController();
   final TextEditingController _newVersionTagController =
       TextEditingController();
-  late String _statusMessage;  
+  late String _statusMessage;
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
 
@@ -86,7 +86,6 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
   }
 
   Future<void> _generatePatch() async {
-    // 简单的参数验证
     if (_oldDirController.text.isEmpty ||
         _newDirController.text.isEmpty ||
         _outputDirController.text.isEmpty) {
@@ -98,26 +97,35 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     }
 
     setState(() {
-        _isLoading = true;
-        _statusMessage = AppLocalizations.of(context).generatingPatch;
-      });
-      _scrollToBottom();
+      _isLoading = true;
+      _statusMessage = AppLocalizations.of(context).generatingPatch;
+    });
+    _scrollToBottom();
 
-    final oldDir = _oldDirController.text;
-    final newDir = _newDirController.text;
-    final outputDir = _outputDirController.text;
+    final oldDir = _oldDirController.text.trim();
+    final newDir = _newDirController.text.trim();
+    final outputDir = _outputDirController.text.trim();
+    final newVersionTag = _newVersionTagController.text.trim();
     final globalMeta = path.join(outputDir, 'manifest.json');
     final exe = await Common.getRenderUpdaterPath(exeName: "patch_maker.exe");
-    if (exe == null) {
+
+    if (exe == null || !File(exe).existsSync()) {
       setState(() {
         _statusMessage = AppLocalizations.of(context).scriptFileNotFound;
       });
       _scrollToBottom();
+      return;
     }
+
+    final systemEncoding =
+    Platform.isWindows && Platform.localeName.contains('zh')
+        ? Encoding.getByName('gbk') ?? utf8
+        : utf8;
+
     Process? process;
     try {
       process = await Process.start(
-        exe ?? "", // 假设你的Go exe在此路径
+        exe,
         [
           '-old-dir',
           oldDir,
@@ -127,42 +135,50 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           outputDir,
           '-global-meta',
           globalMeta,
+          '-new-version-tag',
+          newVersionTag,
         ],
-        runInShell: true,
+        runInShell: false,
       );
+
       final stdoutBuffer = StringBuffer();
       final stderrBuffer = StringBuffer();
 
-      final systemEncoding =
-          Platform.isWindows && Platform.localeName.contains('zh')
-          ? Encoding.getByName('gbk') ?? utf8
-          : utf8;
-
-      await for (var data in process.stdout.transform(systemEncoding.decoder)) {
-        stdoutBuffer.write(data);
-      }
-      await for (var data in process.stderr.transform(systemEncoding.decoder)) {
-        stderrBuffer.write(data);
-      }
+      // 👇并发读取 stdout 和 stderr，避免阻塞
+      final stdoutFuture = process.stdout
+          .transform(systemEncoding.decoder)
+          .forEach(stdoutBuffer.write);
+      final stderrFuture = process.stderr
+          .transform(systemEncoding.decoder)
+          .forEach(stderrBuffer.write);
 
       final exitCode = await process.exitCode;
+      await stdoutFuture;
+      await stderrFuture;
 
-      if (exitCode == 0) {
-        setState(() {
-          _statusMessage =
-              '${AppLocalizations.of(context).patchGenerationSuccess}\n${AppLocalizations.of(context).output}:\n${stdoutBuffer.toString()}\n${AppLocalizations.of(context).error}:\n${stderrBuffer.toString()}';
-        });
-        _scrollToBottom();
-      } else {
-        setState(() {
-          _statusMessage =
-              '${AppLocalizations.of(context).patchGenerationFailed}\n${AppLocalizations.of(context).errorCode}: $exitCode\n${AppLocalizations.of(context).output}:\n${stdoutBuffer.toString()}\n${AppLocalizations.of(context).error}:\n${stderrBuffer.toString()}';
-        });
-        _scrollToBottom();
-      }
-    } catch (e) {
       setState(() {
-        _statusMessage = '${AppLocalizations.of(context).executionError}: $e\n${AppLocalizations.of(context).ensureGoExecutableExists}';
+        if (exitCode == 0) {
+          _statusMessage = '''
+✅ ${AppLocalizations.of(context).patchGenerationSuccess}
+📁 ${AppLocalizations.of(context).output}:
+${stdoutBuffer.toString().trim()}
+⚠️ ${AppLocalizations.of(context).error}:
+${stderrBuffer.toString().trim()}''';
+        } else {
+          _statusMessage = '''
+❌ ${AppLocalizations.of(context).patchGenerationFailed}
+🔁 ${AppLocalizations.of(context).errorCode}: $exitCode
+📁 ${AppLocalizations.of(context).output}:
+${stdoutBuffer.toString().trim()}
+⚠️ ${AppLocalizations.of(context).error}:
+${stderrBuffer.toString().trim()}''';
+        }
+      });
+      _scrollToBottom();
+    } catch (e, stack) {
+      setState(() {
+        _statusMessage =
+        '💥 ${AppLocalizations.of(context).executionError}: $e\n$stack';
       });
       _scrollToBottom();
     } finally {
@@ -172,6 +188,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -250,17 +267,20 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                 decoration: BoxDecoration(
                   color: AppTheme().getLogContainerBackgroundColor(context),
                   borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: AppTheme().getTextFieldBorderColor(context)),
+                  border: Border.all(
+                    color: AppTheme().getTextFieldBorderColor(context),
+                  ),
                 ),
                 child: SingleChildScrollView(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(12.0),
                   child: Text(
                     _statusMessage,
-                    style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-                      fontSize: 14.0,
-                      color: AppTheme().getLogTextColor(context),
-                    ),
+                    style: CupertinoTheme.of(context).textTheme.textStyle
+                        .copyWith(
+                          fontSize: 14.0,
+                          color: AppTheme().getLogTextColor(context),
+                        ),
                   ),
                 ),
               ),
@@ -282,7 +302,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           labelText,
           style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
             fontSize: 13.0,
-            color: CupertinoTheme.of(context).textTheme.textStyle.color!.withOpacity(0.7),
+            color: CupertinoTheme.of(
+              context,
+            ).textTheme.textStyle.color!.withOpacity(0.7),
           ),
         ),
         const SizedBox(height: 6),
@@ -300,7 +322,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
                 decoration: BoxDecoration(
                   color: AppTheme().getTextFieldBackgroundColor(context),
                   borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: AppTheme().getTextFieldBorderColor(context)),
+                  border: Border.all(
+                    color: AppTheme().getTextFieldBorderColor(context),
+                  ),
                 ),
                 clearButtonMode: OverlayVisibilityMode.editing,
               ),
@@ -332,7 +356,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           labelText,
           style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
             fontSize: 13.0,
-            color: CupertinoTheme.of(context).textTheme.textStyle.color!.withOpacity(0.7),
+            color: CupertinoTheme.of(
+              context,
+            ).textTheme.textStyle.color!.withOpacity(0.7),
           ),
         ),
         const SizedBox(height: 6),
@@ -344,7 +370,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
           decoration: BoxDecoration(
             color: AppTheme().getTextFieldBackgroundColor(context),
             borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(color: AppTheme().getTextFieldBorderColor(context)),
+            border: Border.all(
+              color: AppTheme().getTextFieldBorderColor(context),
+            ),
           ),
           clearButtonMode: OverlayVisibilityMode.editing,
         ),
