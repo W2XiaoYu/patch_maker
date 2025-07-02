@@ -36,6 +36,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
   late String _statusMessage;
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
+  DateTime? _startTime;
 
   @override
   void initState() {
@@ -99,6 +100,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     setState(() {
       _isLoading = true;
       _statusMessage = AppLocalizations.of(context).generatingPatch;
+      _startTime = DateTime.now();
     });
     _scrollToBottom();
 
@@ -118,28 +120,24 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     }
 
     final systemEncoding =
-    Platform.isWindows && Platform.localeName.contains('zh')
+        Platform.isWindows && Platform.localeName.contains('zh')
         ? Encoding.getByName('gbk') ?? utf8
         : utf8;
 
     Process? process;
     try {
-      process = await Process.start(
-        exe,
-        [
-          '-old-dir',
-          oldDir,
-          '-new-dir',
-          newDir,
-          '-output-dir',
-          outputDir,
-          '-global-meta',
-          globalMeta,
-          '-new-version-tag',
-          newVersionTag,
-        ],
-        runInShell: false,
-      );
+      process = await Process.start(exe, [
+        '-old-dir',
+        oldDir,
+        '-new-dir',
+        newDir,
+        '-output-dir',
+        outputDir,
+        '-global-meta',
+        globalMeta,
+        '-new-version-tag',
+        newVersionTag,
+      ], runInShell: false);
 
       final stdoutBuffer = StringBuffer();
       final stderrBuffer = StringBuffer();
@@ -156,29 +154,53 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       await stdoutFuture;
       await stderrFuture;
 
+      final endTime = DateTime.now();
+      final duration = _startTime != null ? endTime.difference(_startTime!) : Duration.zero;
+      final durationText = '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
+      
+      final stdout = stdoutBuffer.toString().trim();
+      final stderr = stderrBuffer.toString().trim();
+      
       setState(() {
         if (exitCode == 0) {
           _statusMessage = '''
 ✅ ${AppLocalizations.of(context).patchGenerationSuccess}
+$durationText
+
 📁 ${AppLocalizations.of(context).output}:
-${stdoutBuffer.toString().trim()}
+${stdout.isNotEmpty ? stdout : '(无输出)'}
+
 ⚠️ ${AppLocalizations.of(context).error}:
-${stderrBuffer.toString().trim()}''';
+${stderr.isNotEmpty ? stderr : '(无错误)'}''';
         } else {
           _statusMessage = '''
 ❌ ${AppLocalizations.of(context).patchGenerationFailed}
+$durationText
 🔁 ${AppLocalizations.of(context).errorCode}: $exitCode
+
 📁 ${AppLocalizations.of(context).output}:
-${stdoutBuffer.toString().trim()}
+${stdout.isNotEmpty ? stdout : '(无输出)'}
+
 ⚠️ ${AppLocalizations.of(context).error}:
-${stderrBuffer.toString().trim()}''';
+${stderr.isNotEmpty ? stderr : '(无错误)'}''';
         }
       });
       _scrollToBottom();
     } catch (e, stack) {
+      final endTime = DateTime.now();
+      final duration = _startTime != null ? endTime.difference(_startTime!) : Duration.zero;
+      final durationText = '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
+      
       setState(() {
-        _statusMessage =
-        '💥 ${AppLocalizations.of(context).executionError}: $e\n$stack';
+        _statusMessage = '''
+💥 ${AppLocalizations.of(context).executionError}
+$durationText
+
+⚠️ 错误详情:
+$e
+
+📋 堆栈跟踪:
+$stack''';
       });
       _scrollToBottom();
     } finally {
@@ -188,7 +210,6 @@ ${stderrBuffer.toString().trim()}''';
       });
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
