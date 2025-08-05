@@ -57,13 +57,17 @@ class AppLocalizations {
       'errorCode': 'Error code',
       'executionError': 'Execution error',
       'scriptFileNotFound': 'Error: Script file not found',
-      'fillAllRequiredFields': 'Error: Please fill in all required directories.',
-      'ensureGoExecutableExists': 'Please ensure the Go executable exists and the path is correct.',
+      'fillAllRequiredFields':
+          'Error: Please fill in all required directories.',
+      'ensureGoExecutableExists':
+          'Please ensure the Go executable exists and the path is correct.',
       'selectTheme': 'Select Theme',
       'lightTheme': 'Light',
       'darkTheme': 'Dark',
       'systemTheme': 'System',
       'cancel': 'Cancel',
+      'versionWriteFile':
+          'Write the version file in the new version directory.',
     },
     'zh': {
       'appTitle': '更新补丁生成器',
@@ -88,29 +92,68 @@ class AppLocalizations {
       'darkTheme': '深色',
       'systemTheme': '跟随系统',
       'cancel': '取消',
+      'versionWriteFile': "在新版本目录下写入版本文件",
     },
   };
 
   String get appTitle => _localizedValues[locale.languageCode]!['appTitle']!;
-  String get oldVersionDir => _localizedValues[locale.languageCode]!['oldVersionDir']!;
-  String get newVersionDir => _localizedValues[locale.languageCode]!['newVersionDir']!;
+
+  String get oldVersionDir =>
+      _localizedValues[locale.languageCode]!['oldVersionDir']!;
+
+  String get newVersionDir =>
+      _localizedValues[locale.languageCode]!['newVersionDir']!;
+
   String get outputDir => _localizedValues[locale.languageCode]!['outputDir']!;
-  String get generatePatch => _localizedValues[locale.languageCode]!['generatePatch']!;
+
+  String get generatePatch =>
+      _localizedValues[locale.languageCode]!['generatePatch']!;
+
   String get logOutput => _localizedValues[locale.languageCode]!['logOutput']!;
-  String get waitingForInput => _localizedValues[locale.languageCode]!['waitingForInput']!;
-  String get generatingPatch => _localizedValues[locale.languageCode]!['generatingPatch']!;
-  String get patchGenerationSuccess => _localizedValues[locale.languageCode]!['patchGenerationSuccess']!;
-  String get patchGenerationFailed => _localizedValues[locale.languageCode]!['patchGenerationFailed']!;
+
+  String get waitingForInput =>
+      _localizedValues[locale.languageCode]!['waitingForInput']!;
+
+  String get generatingPatch =>
+      _localizedValues[locale.languageCode]!['generatingPatch']!;
+
+  String get patchGenerationSuccess =>
+      _localizedValues[locale.languageCode]!['patchGenerationSuccess']!;
+
+  String get patchGenerationFailed =>
+      _localizedValues[locale.languageCode]!['patchGenerationFailed']!;
+
   String get output => _localizedValues[locale.languageCode]!['output']!;
+
   String get error => _localizedValues[locale.languageCode]!['error']!;
+
   String get errorCode => _localizedValues[locale.languageCode]!['errorCode']!;
-  String get executionError => _localizedValues[locale.languageCode]!['executionError']!;
-  String get scriptFileNotFound => _localizedValues[locale.languageCode]!['scriptFileNotFound']!;
-  String get fillAllRequiredFields => _localizedValues[locale.languageCode]!['fillAllRequiredFields']!;
-  String get ensureGoExecutableExists => _localizedValues[locale.languageCode]!['ensureGoExecutableExists']!;
-  String get selectTheme => _localizedValues[locale.languageCode]!['selectTheme']!;
-  String get lightTheme => _localizedValues[locale.languageCode]!['lightTheme']!;
+
+  String get executionError =>
+      _localizedValues[locale.languageCode]!['executionError']!;
+
+  String get scriptFileNotFound =>
+      _localizedValues[locale.languageCode]!['scriptFileNotFound']!;
+
+  String get fillAllRequiredFields =>
+      _localizedValues[locale.languageCode]!['fillAllRequiredFields']!;
+
+  String get ensureGoExecutableExists =>
+      _localizedValues[locale.languageCode]!['ensureGoExecutableExists']!;
+
+  String get selectTheme =>
+      _localizedValues[locale.languageCode]!['selectTheme']!;
+
+  String get lightTheme =>
+      _localizedValues[locale.languageCode]!['lightTheme']!;
+
   String get darkTheme => _localizedValues[locale.languageCode]!['darkTheme']!;
-  String get systemTheme => _localizedValues[locale.languageCode]!['systemTheme']!;
+
+  String get systemTheme =>
+      _localizedValues[locale.languageCode]!['systemTheme']!;
+
   String get cancel => _localizedValues[locale.languageCode]!['cancel']!;
+
+  String get versionWriteFile =>
+      _localizedValues[locale.languageCode]!['versionWriteFile']!;
 }

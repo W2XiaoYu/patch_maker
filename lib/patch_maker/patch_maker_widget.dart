@@ -33,6 +33,8 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
   final TextEditingController _outputDirController = TextEditingController();
   final TextEditingController _newVersionTagController =
       TextEditingController();
+  final TextEditingController _versionInputController = TextEditingController();
+  bool _isGeneratVersion = false;
   late String _statusMessage;
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -59,6 +61,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     _outputDirController.dispose();
     _newVersionTagController.dispose();
     _scrollController.dispose();
+    _versionInputController.dispose();
     super.dispose();
   }
 
@@ -123,7 +126,19 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
         Platform.isWindows && Platform.localeName.contains('zh')
         ? Encoding.getByName('gbk') ?? utf8
         : utf8;
+    if (_isGeneratVersion) {
+      final version = _versionInputController.text.trim();
 
+      ///1.0.0.0521
+      final versionInfo = {
+        'currentVersion': version,
+        'buildNumber': version.split('.').last,
+        'buildDate': DateTime.now().toIso8601String(),
+      };
+      final jsonFile = File( path.join(newDir, 'version.json'));
+      await jsonFile.writeAsString(jsonEncode(versionInfo), flush: true);
+      print("✅ version.json 已写入: ${jsonFile.path}");
+    }
     Process? process;
     try {
       process = await Process.start(exe, [
@@ -155,15 +170,19 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       await stderrFuture;
 
       final endTime = DateTime.now();
-      final duration = _startTime != null ? endTime.difference(_startTime!) : Duration.zero;
-      final durationText = '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
-      
+      final duration = _startTime != null
+          ? endTime.difference(_startTime!)
+          : Duration.zero;
+      final durationText =
+          '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
+
       final stdout = stdoutBuffer.toString().trim();
       final stderr = stderrBuffer.toString().trim();
-      
+
       setState(() {
         if (exitCode == 0) {
-          _statusMessage = '''
+          _statusMessage =
+              '''
 ✅ ${AppLocalizations.of(context).patchGenerationSuccess}
 $durationText
 
@@ -173,7 +192,8 @@ ${stdout.isNotEmpty ? stdout : '(无输出)'}
 ⚠️ ${AppLocalizations.of(context).error}:
 ${stderr.isNotEmpty ? stderr : '(无错误)'}''';
         } else {
-          _statusMessage = '''
+          _statusMessage =
+              '''
 ❌ ${AppLocalizations.of(context).patchGenerationFailed}
 $durationText
 🔁 ${AppLocalizations.of(context).errorCode}: $exitCode
@@ -188,11 +208,15 @@ ${stderr.isNotEmpty ? stderr : '(无错误)'}''';
       _scrollToBottom();
     } catch (e, stack) {
       final endTime = DateTime.now();
-      final duration = _startTime != null ? endTime.difference(_startTime!) : Duration.zero;
-      final durationText = '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
-      
+      final duration = _startTime != null
+          ? endTime.difference(_startTime!)
+          : Duration.zero;
+      final durationText =
+          '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
+
       setState(() {
-        _statusMessage = '''
+        _statusMessage =
+            '''
 💥 ${AppLocalizations.of(context).executionError}
 $durationText
 
@@ -252,6 +276,12 @@ $stack''';
                 controller: _outputDirController,
                 labelText: AppLocalizations.of(context).outputDir,
               ),
+              const SizedBox(height: 12.0),
+              _buildVersionRow(
+                controller: _versionInputController,
+                labelText: AppLocalizations.of(context).versionWriteFile,
+              ),
+
               const SizedBox(height: 24.0), // 按钮上方多一点间距
               _isLoading
                   ? const Center(
@@ -312,6 +342,63 @@ $stack''';
     );
   }
 
+  Widget _buildVersionRow({
+    required TextEditingController controller,
+    required String labelText,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          labelText,
+          style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+            fontSize: 13.0,
+            color: CupertinoTheme.of(
+              context,
+            ).textTheme.textStyle.color!.withOpacity(0.7),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: CupertinoTextField(
+                enabled: _isGeneratVersion,
+                controller: controller,
+                placeholder: labelText,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12.0,
+                  vertical: 12.0,
+                ),
+                style: CupertinoTheme.of(context).textTheme.textStyle,
+                decoration: BoxDecoration(
+                  color: AppTheme().getTextFieldBackgroundColor(context),
+                  borderRadius: BorderRadius.circular(8.0),
+                  border: Border.all(
+                    color: AppTheme().getTextFieldBorderColor(context),
+                  ),
+                ),
+                clearButtonMode: OverlayVisibilityMode.editing,
+              ),
+            ),
+            const SizedBox(width: 8.0),
+            SizedBox(
+              width: 60,
+              child: CupertinoSwitch(
+                value: _isGeneratVersion,
+                onChanged: (bool value) {
+                  setState(() {
+                    _isGeneratVersion = value;
+                  });
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildDirectoryRow({
     required TextEditingController controller,
     required String labelText,
@@ -351,51 +438,19 @@ $stack''';
               ),
             ),
             const SizedBox(width: 8.0),
-            CupertinoButton(
-              onPressed: () => _pickDirectory(controller),
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: Icon(
-                CupertinoIcons.folder_open,
-                size: 24.0,
-                color: CupertinoTheme.of(context).primaryColor,
+            SizedBox(
+              width: 60,
+              child: CupertinoButton(
+                onPressed: () => _pickDirectory(controller),
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Icon(
+                  CupertinoIcons.folder_open,
+                  size: 24.0,
+                  color: CupertinoTheme.of(context).primaryColor,
+                ),
               ),
             ),
           ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String labelText,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          labelText,
-          style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-            fontSize: 13.0,
-            color: CupertinoTheme.of(
-              context,
-            ).textTheme.textStyle.color!.withOpacity(0.7),
-          ),
-        ),
-        const SizedBox(height: 6),
-        CupertinoTextField(
-          controller: controller,
-          placeholder: labelText,
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
-          style: CupertinoTheme.of(context).textTheme.textStyle,
-          decoration: BoxDecoration(
-            color: AppTheme().getTextFieldBackgroundColor(context),
-            borderRadius: BorderRadius.circular(8.0),
-            border: Border.all(
-              color: AppTheme().getTextFieldBorderColor(context),
-            ),
-          ),
-          clearButtonMode: OverlayVisibilityMode.editing,
         ),
       ],
     );
