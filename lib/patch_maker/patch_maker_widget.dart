@@ -135,7 +135,7 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
         'buildNumber': version.split('.').last,
         'buildDate': DateTime.now().toIso8601String(),
       };
-      final jsonFile = File( path.join(newDir, 'version.json'));
+      final jsonFile = File(path.join(newDir, 'version.json'));
       await jsonFile.writeAsString(jsonEncode(versionInfo), flush: true);
       print("✅ version.json 已写入: ${jsonFile.path}");
     }
@@ -239,6 +239,7 @@ $stack''';
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
+
         middle: Text(AppLocalizations.of(context).appTitle),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

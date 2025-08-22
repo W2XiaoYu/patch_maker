@@ -68,6 +68,7 @@ class AppLocalizations {
       'cancel': 'Cancel',
       'versionWriteFile':
           'Write the version file in the new version directory.',
+      'signFiles': 'Sign Files',
     },
     'zh': {
       'appTitle': '更新补丁生成器',
@@ -93,6 +94,7 @@ class AppLocalizations {
       'systemTheme': '跟随系统',
       'cancel': '取消',
       'versionWriteFile': "在新版本目录下写入版本文件",
+      'signFiles': '文件签名',
     },
   };
 
@@ -156,4 +158,6 @@ class AppLocalizations {
 
   String get versionWriteFile =>
       _localizedValues[locale.languageCode]!['versionWriteFile']!;
+
+  String get signFiles => _localizedValues[locale.languageCode]!['signFiles']!;
 }

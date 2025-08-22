@@ -40,11 +40,19 @@ class AppTheme {
       scaffoldBackgroundColor: CupertinoColors.systemBackground,
       textTheme: CupertinoTextThemeData(
         textStyle: TextStyle(
+          inherit: true,
           fontFamily: '微软雅黑',
           color: CupertinoColors.black,
+          backgroundColor: Colors.transparent,
+          height: 1.0,
+          wordSpacing: 0.0,
+          decoration: TextDecoration.none,
+          decorationColor: Colors.transparent,
+          decorationThickness: 1.0,
         ),
         navTitleTextStyle: TextStyle(
           fontFamily: '微软雅黑',
+          inherit: true,
           color: CupertinoColors.black,
           fontSize: 18.0,
           fontWeight: FontWeight.w600,
@@ -61,13 +69,21 @@ class AppTheme {
       scaffoldBackgroundColor: CupertinoColors.darkBackgroundGray,
       textTheme: CupertinoTextThemeData(
         textStyle: TextStyle(
+          inherit: true,
           fontFamily: '微软雅黑',
           color: CupertinoColors.white,
+          backgroundColor: Colors.transparent,
+          height: 1.0,
+          wordSpacing: 0.0,
+          decoration: TextDecoration.none,
+          decorationColor: Colors.transparent,
+          decorationThickness: 1.0,
         ),
         navTitleTextStyle: TextStyle(
           fontFamily: '微软雅黑',
           color: CupertinoColors.white,
           fontSize: 18.0,
+          inherit: true,
           fontWeight: FontWeight.w600,
         ),
       ),

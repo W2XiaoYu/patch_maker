@@ -32,7 +32,7 @@ class _MyAppState extends State<MyApp> {
     setState(() {
       final String languageCode = prefs.getString('languageCode') ?? 'zh';
       _locale = Locale(languageCode, '');
-      
+
       final String themeModeString = prefs.getString('themeMode') ?? 'system';
       switch (themeModeString) {
         case 'light':
@@ -56,7 +56,7 @@ class _MyAppState extends State<MyApp> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('languageCode', locale.languageCode);
   }
-  
+
   void _setThemeMode(ThemeMode themeMode) async {
     setState(() {
       _themeMode = themeMode;
@@ -90,14 +90,23 @@ class _MyAppState extends State<MyApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: Builder(
-        builder: (context) => PatchMakerWidget(
-          onLocaleChanged: _setLocale, 
+      initialRoute: '/',
+      routes: {
+        '/': (context) => PatchMakerWidget(
+          onLocaleChanged: _setLocale,
           currentLocale: _locale,
           onThemeChanged: _setThemeMode,
           currentThemeMode: _themeMode,
         ),
-      ),
+      },
+      // home: Builder(
+      //   builder: (context) => PatchMakerWidget(
+      //     onLocaleChanged: _setLocale,
+      //     currentLocale: _locale,
+      //     onThemeChanged: _setThemeMode,
+      //     currentThemeMode: _themeMode,
+      //   ),
+      // ),
     );
   }
 }
