@@ -19,7 +19,7 @@ class Common {
       return exeFile.path;
     } else {
       final Directory supportDir = await getApplicationSupportDirectory();
-      final String updaterName = "patch_maker.exe";
+      final String updaterName = "patch_maker_2026-01-04.exe";
       final String assetKey = 'exe/$exeName';
       final String localPath = path.join(supportDir.path, updaterName);
       final File localFile = File(localPath);

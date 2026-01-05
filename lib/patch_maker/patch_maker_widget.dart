@@ -8,6 +8,7 @@ import 'package:patch_maker/l10n/language_selector.dart';
 import 'package:patch_maker/theme/app_theme.dart';
 import 'package:patch_maker/theme/theme_selector.dart';
 import 'package:patch_maker/utils/common.dart';
+import 'package:crypto/crypto.dart';
 
 class PatchMakerWidget extends StatefulWidget {
   final Function(Locale) onLocaleChanged;
@@ -89,6 +90,27 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     }
   }
 
+  Future<void> _verifyManifest(
+    String manifestPath,
+    String stdout,
+    String stderr,
+    String durationText,
+  ) async {
+    // 显示验证弹窗
+    showCupertinoDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return _VerificationDialog(
+          manifestPath: manifestPath,
+          stdout: stdout,
+          stderr: stderr,
+          durationText: durationText,
+        );
+      },
+    );
+  }
+
   Future<void> _generatePatch() async {
     if (_oldDirController.text.isEmpty ||
         _newDirController.text.isEmpty ||
@@ -112,7 +134,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     final outputDir = _outputDirController.text.trim();
     final newVersionTag = _newVersionTagController.text.trim();
     final globalMeta = path.join(outputDir, 'manifest.json');
-    final exe = await Common.getRenderUpdaterPath(exeName: "patch_maker.exe");
+    final exe = await Common.getRenderUpdaterPath(
+      exeName: "patch_maker_2026-01-04.exe",
+    );
 
     if (exe == null || !File(exe).existsSync()) {
       setState(() {
@@ -140,6 +164,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       print("✅ version.json 已写入: ${jsonFile.path}");
     }
     Process? process;
+    final stdoutBuffer = StringBuffer();
+    final stderrBuffer = StringBuffer();
+
     try {
       process = await Process.start(exe, [
         '-old-dir',
@@ -154,20 +181,39 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
         newVersionTag,
       ], runInShell: false);
 
-      final stdoutBuffer = StringBuffer();
-      final stderrBuffer = StringBuffer();
+      // 实时监听 stdout，每行更新UI
+      process.stdout.transform(systemEncoding.decoder).listen((data) {
+        stdoutBuffer.write(data);
+        setState(() {
+          _statusMessage = '''
+${AppLocalizations.of(context).generatingPatch}
 
-      // 👇并发读取 stdout 和 stderr，避免阻塞
-      final stdoutFuture = process.stdout
-          .transform(systemEncoding.decoder)
-          .forEach(stdoutBuffer.write);
-      final stderrFuture = process.stderr
-          .transform(systemEncoding.decoder)
-          .forEach(stderrBuffer.write);
+📁 ${AppLocalizations.of(context).output}:
+${stdoutBuffer.toString().trim()}
+
+⚠️ ${AppLocalizations.of(context).error}:
+${stderrBuffer.toString().trim().isNotEmpty ? stderrBuffer.toString().trim() : '(无错误)'}''';
+        });
+        _scrollToBottom();
+      });
+
+      // 实时监听 stderr
+      process.stderr.transform(systemEncoding.decoder).listen((data) {
+        stderrBuffer.write(data);
+        setState(() {
+          _statusMessage = '''
+${AppLocalizations.of(context).generatingPatch}
+
+📁 ${AppLocalizations.of(context).output}:
+${stdoutBuffer.toString().trim().isNotEmpty ? stdoutBuffer.toString().trim() : '(无输出)'}
+
+⚠️ ${AppLocalizations.of(context).error}:
+${stderrBuffer.toString().trim()}''';
+        });
+        _scrollToBottom();
+      });
 
       final exitCode = await process.exitCode;
-      await stdoutFuture;
-      await stderrFuture;
 
       final endTime = DateTime.now();
       final duration = _startTime != null
@@ -190,7 +236,9 @@ $durationText
 ${stdout.isNotEmpty ? stdout : '(无输出)'}
 
 ⚠️ ${AppLocalizations.of(context).error}:
-${stderr.isNotEmpty ? stderr : '(无错误)'}''';
+${stderr.isNotEmpty ? stderr : '(无错误)'}
+
+🔍 正在验证manifest.json...''';
         } else {
           _statusMessage =
               '''
@@ -206,6 +254,11 @@ ${stderr.isNotEmpty ? stderr : '(无错误)'}''';
         }
       });
       _scrollToBottom();
+
+      // 如果成功，验证manifest.json
+      if (exitCode == 0) {
+        await _verifyManifest(globalMeta, stdout, stderr, durationText);
+      }
     } catch (e, stack) {
       final endTime = DateTime.now();
       final duration = _startTime != null
@@ -239,7 +292,6 @@ $stack''';
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
-
         middle: Text(AppLocalizations.of(context).appTitle),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -454,6 +506,245 @@ $stack''';
           ],
         ),
       ],
+    );
+  }
+}
+
+// 验证弹窗组件
+class _VerificationDialog extends StatefulWidget {
+  final String manifestPath;
+  final String stdout;
+  final String stderr;
+  final String durationText;
+
+  const _VerificationDialog({
+    required this.manifestPath,
+    required this.stdout,
+    required this.stderr,
+    required this.durationText,
+  });
+
+  @override
+  State<_VerificationDialog> createState() => _VerificationDialogState();
+}
+
+class _VerificationDialogState extends State<_VerificationDialog> {
+  bool _isLoading = true;
+  String _resultMessage = '';
+  String _currentFile = '';
+  int _verifiedCount = 0;
+  int _totalCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _performVerification();
+    });
+  }
+
+  Future<void> _performVerification() async {
+    final l10n = AppLocalizations.of(context);
+
+    try {
+      final manifestFile = File(widget.manifestPath);
+      if (!manifestFile.existsSync()) {
+        setState(() {
+          _isLoading = false;
+          _resultMessage = l10n.manifestNotFound;
+        });
+        return;
+      }
+
+      final manifestContent = await manifestFile.readAsString();
+      final manifest = jsonDecode(manifestContent) as Map<String, dynamic>;
+      final files = manifest['files'] as List<dynamic>? ?? [];
+
+      // 统计信息
+      int totalFiles = files.length;
+      int errorFiles = 0;
+      int successFiles = 0;
+      int deletedFiles = 0;
+      int hashVerified = 0;
+      List<String> errorMessages = [];
+
+      setState(() {
+        _totalCount = totalFiles;
+      });
+
+      // 检查每个文件
+      for (int i = 0; i < files.length; i++) {
+        final fileMap = files[i] as Map<String, dynamic>;
+        final relativePath = fileMap['relative_path'] as String? ?? '';
+
+        setState(() {
+          _verifiedCount = i + 1;
+          _currentFile = relativePath;
+        });
+
+        // 检查是否是已删除的文件
+        if (fileMap['deleted_file_only'] == true) {
+          deletedFiles++;
+          continue;
+        }
+
+        // 检查是否有错误
+        if (fileMap.containsKey('error_status')) {
+          errorFiles++;
+          final errorStatus = fileMap['error_status'] as String;
+          errorMessages.add('$relativePath\n  $errorStatus');
+        } else {
+          successFiles++;
+
+          // 验证补丁文件哈希
+          final patchFilePath = fileMap['patch_file_path'] as String?;
+          final patchFileSha256 = fileMap['patch_file_sha256'] as String?;
+
+          if (patchFilePath != null &&
+              patchFileSha256 != null &&
+              patchFileSha256.isNotEmpty) {
+            final patchFile = File(patchFilePath);
+            if (patchFile.existsSync()) {
+              try {
+                final bytes = await patchFile.readAsBytes();
+                final actualHash = sha256.convert(bytes).toString();
+                if (actualHash != patchFileSha256) {
+                  errorMessages.add('$relativePath\n  ${l10n.hashMismatch}');
+                } else {
+                  hashVerified++;
+                }
+              } catch (e) {
+                errorMessages.add('$relativePath\n  ${l10n.cannotReadPatch}');
+              }
+            } else {
+              errorMessages.add('$relativePath\n  ${l10n.patchNotFound}');
+            }
+          }
+        }
+      }
+
+      // 构建验证报告
+      final reportBuffer = StringBuffer();
+      reportBuffer.writeln('${l10n.verificationComplete}\n');
+      reportBuffer.writeln('${l10n.totalFiles}: $totalFiles');
+      reportBuffer.writeln('${l10n.successGenerated}: $successFiles');
+      reportBuffer.writeln('${l10n.failedGenerated}: $errorFiles');
+      reportBuffer.writeln('${l10n.deletedFiles}: $deletedFiles');
+      reportBuffer.writeln('${l10n.hashVerified}: $hashVerified');
+
+      if (errorMessages.isNotEmpty) {
+        reportBuffer.writeln('\n${l10n.errorDetails}:');
+        reportBuffer.writeln('─' * 30);
+        for (var msg in errorMessages) {
+          reportBuffer.writeln(msg);
+          reportBuffer.writeln('');
+        }
+      } else {
+        reportBuffer.writeln('\n${l10n.allFilesVerified}');
+      }
+
+      setState(() {
+        _isLoading = false;
+        _resultMessage = reportBuffer.toString();
+      });
+    } catch (e, stack) {
+      setState(() {
+        _isLoading = false;
+        _resultMessage = '${l10n.verificationError}: $e';
+      });
+      print('验证manifest错误: $e\n$stack');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return Center(
+      child: CupertinoPopupSurface(
+        child: Container(
+          width: 320,
+          padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 标题
+            Text(
+              l10n.verifyManifest,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // 内容区域
+            if (_isLoading) ...[
+              // 加载中
+              Row(
+                children: [
+                  const CupertinoActivityIndicator(radius: 10),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${l10n.verifying} ($_verifiedCount/$_totalCount)',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        if (_currentFile.isNotEmpty)
+                          Text(
+                            _currentFile,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: CupertinoColors.systemGrey,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              // 结果
+              Container(
+                constraints: const BoxConstraints(maxHeight: 250),
+                child: SingleChildScrollView(
+                  child: Text(
+                    _resultMessage,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 16),
+
+            // 关闭按钮
+            if (!_isLoading)
+              SizedBox(
+                width: double.infinity,
+                child: CupertinoButton(
+                  color: CupertinoColors.systemBlue,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    l10n.close,
+                    style: const TextStyle(color: CupertinoColors.white),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      ),
     );
   }
 }

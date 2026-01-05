@@ -23,6 +23,7 @@ dependencies:
   path: ^1.8.3
   intl: ^0.20.2
   shared_preferences: ^2.2.2
+  crypto: ^3.0.3
 
 
 dev_dependencies:
@@ -40,6 +41,7 @@ flutter:
   assets:
     - assets/
     - exe/patch_maker.exe
+    - exe/patch_maker_2026-01-04.exe
 icons_launcher:
   image_path: 'assets/app_icon.png'
   platforms:

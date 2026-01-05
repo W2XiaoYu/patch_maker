@@ -69,6 +69,22 @@ class AppLocalizations {
       'versionWriteFile':
           'Write the version file in the new version directory.',
       'signFiles': 'Sign Files',
+      'verifyManifest': 'Verify Manifest',
+      'verifying': 'Verifying',
+      'verificationComplete': 'Verification Complete',
+      'totalFiles': 'Total Files',
+      'successGenerated': 'Generated',
+      'failedGenerated': 'Failed',
+      'deletedFiles': 'Deleted',
+      'hashVerified': 'Hash Verified',
+      'errorDetails': 'Error Details',
+      'allFilesVerified': 'All files verified successfully',
+      'manifestNotFound': 'manifest.json not found',
+      'verificationError': 'Verification error',
+      'hashMismatch': 'Hash mismatch',
+      'cannotReadPatch': 'Cannot read patch file',
+      'patchNotFound': 'Patch file not found',
+      'close': 'Close',
     },
     'zh': {
       'appTitle': '更新补丁生成器',
@@ -95,6 +111,22 @@ class AppLocalizations {
       'cancel': '取消',
       'versionWriteFile': "在新版本目录下写入版本文件",
       'signFiles': '文件签名',
+      'verifyManifest': '验证 Manifest',
+      'verifying': '正在验证',
+      'verificationComplete': '验证完成',
+      'totalFiles': '总文件数',
+      'successGenerated': '成功生成',
+      'failedGenerated': '生成失败',
+      'deletedFiles': '已删除',
+      'hashVerified': '哈希验证',
+      'errorDetails': '错误详情',
+      'allFilesVerified': '所有文件验证通过',
+      'manifestNotFound': 'manifest.json 文件不存在',
+      'verificationError': '验证出错',
+      'hashMismatch': '哈希不匹配',
+      'cannotReadPatch': '无法读取补丁文件',
+      'patchNotFound': '补丁文件不存在',
+      'close': '关闭',
     },
   };
 
@@ -160,4 +192,50 @@ class AppLocalizations {
       _localizedValues[locale.languageCode]!['versionWriteFile']!;
 
   String get signFiles => _localizedValues[locale.languageCode]!['signFiles']!;
+
+  String get verifyManifest =>
+      _localizedValues[locale.languageCode]!['verifyManifest']!;
+
+  String get verifying => _localizedValues[locale.languageCode]!['verifying']!;
+
+  String get verificationComplete =>
+      _localizedValues[locale.languageCode]!['verificationComplete']!;
+
+  String get totalFiles =>
+      _localizedValues[locale.languageCode]!['totalFiles']!;
+
+  String get successGenerated =>
+      _localizedValues[locale.languageCode]!['successGenerated']!;
+
+  String get failedGenerated =>
+      _localizedValues[locale.languageCode]!['failedGenerated']!;
+
+  String get deletedFiles =>
+      _localizedValues[locale.languageCode]!['deletedFiles']!;
+
+  String get hashVerified =>
+      _localizedValues[locale.languageCode]!['hashVerified']!;
+
+  String get errorDetails =>
+      _localizedValues[locale.languageCode]!['errorDetails']!;
+
+  String get allFilesVerified =>
+      _localizedValues[locale.languageCode]!['allFilesVerified']!;
+
+  String get manifestNotFound =>
+      _localizedValues[locale.languageCode]!['manifestNotFound']!;
+
+  String get verificationError =>
+      _localizedValues[locale.languageCode]!['verificationError']!;
+
+  String get hashMismatch =>
+      _localizedValues[locale.languageCode]!['hashMismatch']!;
+
+  String get cannotReadPatch =>
+      _localizedValues[locale.languageCode]!['cannotReadPatch']!;
+
+  String get patchNotFound =>
+      _localizedValues[locale.languageCode]!['patchNotFound']!;
+
+  String get close => _localizedValues[locale.languageCode]!['close']!;
 }
