@@ -1,13 +1,11 @@
 name: patch_maker
 description: "A new Flutter project."
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+publish_to: "none" # Remove this line if you wish to publish to pub.dev
 
-
-version: 1.0.0+3
+version: 1.0.3+20260105
 
 environment:
   sdk: ^3.8.0
-
 
 dependencies:
   flutter:
@@ -25,7 +23,6 @@ dependencies:
   shared_preferences: ^2.2.2
   crypto: ^3.0.3
 
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -33,7 +30,6 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   icons_launcher: ^3.0.1
 flutter:
-
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
@@ -43,7 +39,7 @@ flutter:
     - exe/patch_maker.exe
     - exe/patch_maker_2026-01-04.exe
 icons_launcher:
-  image_path: 'assets/app_icon.png'
+  image_path: "assets/app_icon.png"
   platforms:
     android:
       enable: true
