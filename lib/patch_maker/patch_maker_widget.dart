@@ -7,8 +7,7 @@ import 'package:patch_maker/l10n/app_localizations.dart';
 import 'package:patch_maker/l10n/language_selector.dart';
 import 'package:patch_maker/theme/app_theme.dart';
 import 'package:patch_maker/theme/theme_selector.dart';
-import 'package:patch_maker/utils/common.dart';
-import 'package:crypto/crypto.dart';
+import 'package:patch_maker/utils/path.dart';
 
 class PatchMakerWidget extends StatefulWidget {
   final Function(Locale) onLocaleChanged;
@@ -36,23 +35,48 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       TextEditingController();
   final TextEditingController _versionInputController = TextEditingController();
   bool _isGeneratVersion = false;
-  late String _statusMessage;
+  final List<String> _logMessages = [];
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   DateTime? _startTime;
+  int _errorCount = 0;
+  int _successCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _statusMessage = '';
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_statusMessage.isEmpty) {
-      _statusMessage = AppLocalizations.of(context).waitingForInput;
+    if (_logMessages.isEmpty) {
+      _addLog(AppLocalizations.of(context).waitingForInput);
     }
+  }
+
+  // 添加日志的辅助方法
+  void _addLog(String message, {bool isError = false}) {
+    setState(() {
+      final timestamp = DateTime.now().toString().substring(11, 19);
+      final prefix = isError ? '❌' : '📝';
+      _logMessages.add('[$timestamp] $prefix $message');
+      if (isError) {
+        _errorCount++;
+      } else {
+        _successCount++;
+      }
+    });
+    _scrollToBottom();
+  }
+
+  // 清空日志
+  void _clearLogs() {
+    setState(() {
+      _logMessages.clear();
+      _errorCount = 0;
+      _successCount = 0;
+    });
   }
 
   @override
@@ -90,201 +114,175 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     }
   }
 
-  Future<void> _verifyManifest(
-    String manifestPath,
-    String stdout,
-    String stderr,
-    String durationText,
-  ) async {
-    // 显示验证弹窗
-    showCupertinoDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return _VerificationDialog(
-          manifestPath: manifestPath,
-          stdout: stdout,
-          stderr: stderr,
-          durationText: durationText,
-        );
-      },
-    );
-  }
-
   Future<void> _generatePatch() async {
     if (_oldDirController.text.isEmpty ||
         _newDirController.text.isEmpty ||
         _outputDirController.text.isEmpty) {
-      setState(() {
-        _statusMessage = AppLocalizations.of(context).fillAllRequiredFields;
-      });
-      _scrollToBottom();
+      _addLog(
+        AppLocalizations.of(context).fillAllRequiredFields,
+        isError: true,
+      );
       return;
     }
 
+    // 清空之前的日志
+    _clearLogs();
+
     setState(() {
       _isLoading = true;
-      _statusMessage = AppLocalizations.of(context).generatingPatch;
       _startTime = DateTime.now();
     });
-    _scrollToBottom();
+
+    _addLog('🚀 ${AppLocalizations.of(context).generatingPatch}');
 
     final oldDir = _oldDirController.text.trim();
     final newDir = _newDirController.text.trim();
     final outputDir = _outputDirController.text.trim();
     final newVersionTag = _newVersionTagController.text.trim();
     final globalMeta = path.join(outputDir, 'manifest.json');
-    final exe = await Common.getRenderUpdaterPath(
-      exeName: "patch_maker_2026-01-04.exe",
-    );
-
-    if (exe == null || !File(exe).existsSync()) {
-      setState(() {
-        _statusMessage = AppLocalizations.of(context).scriptFileNotFound;
-      });
-      _scrollToBottom();
-      return;
-    }
-
-    final systemEncoding =
-        Platform.isWindows && Platform.localeName.contains('zh')
-        ? Encoding.getByName('gbk') ?? utf8
-        : utf8;
-    if (_isGeneratVersion) {
-      final version = _versionInputController.text.trim();
-
-      ///1.0.0.0521
-      final versionInfo = {
-        'currentVersion': version,
-        'buildNumber': version.split('.').last,
-        'buildDate': DateTime.now().toIso8601String(),
-      };
-      final jsonFile = File(path.join(newDir, 'version.json'));
-      await jsonFile.writeAsString(jsonEncode(versionInfo), flush: true);
-      print("✅ version.json 已写入: ${jsonFile.path}");
-    }
-    Process? process;
-    final stdoutBuffer = StringBuffer();
-    final stderrBuffer = StringBuffer();
 
     try {
-      process = await Process.start(exe, [
-        '-old-dir',
-        oldDir,
-        '-new-dir',
-        newDir,
-        '-output-dir',
-        outputDir,
-        '-global-meta',
-        globalMeta,
-        '-new-version-tag',
-        newVersionTag,
-      ], runInShell: false);
+      // 如果需要生成版本文件
+      if (_isGeneratVersion) {
+        final version = _versionInputController.text.trim();
+        if (version.isEmpty) {
+          _addLog('⚠️ 版本号不能为空', isError: true);
+          setState(() => _isLoading = false);
+          return;
+        }
 
-      // 实时监听 stdout，每行更新UI
-      process.stdout.transform(systemEncoding.decoder).listen((data) {
-        stdoutBuffer.write(data);
-        setState(() {
-          _statusMessage = '''
-${AppLocalizations.of(context).generatingPatch}
+        final versionInfo = {
+          'currentVersion': version,
+          'buildNumber': version.split('.').last,
+          'buildDate': DateTime.now().toIso8601String(),
+        };
+        final jsonFile = File(path.join(newDir, 'version.json'));
+        await jsonFile.writeAsString(jsonEncode(versionInfo), flush: true);
 
-📁 ${AppLocalizations.of(context).output}:
-${stdoutBuffer.toString().trim()}
+        _addLog('✅ version.json 已写入: ${jsonFile.path}');
+      }
 
-⚠️ ${AppLocalizations.of(context).error}:
-${stderrBuffer.toString().trim().isNotEmpty ? stderrBuffer.toString().trim() : '(无错误)'}''';
-        });
-        _scrollToBottom();
-      });
+      // 创建 PatchUtils 实例
+      final patchUtils = await PatchUtils.create(
+        oldPath: oldDir,
+        newPath: newDir,
+        outputPath: outputDir,
+      );
 
-      // 实时监听 stderr
-      process.stderr.transform(systemEncoding.decoder).listen((data) {
-        stderrBuffer.write(data);
-        setState(() {
-          _statusMessage = '''
-${AppLocalizations.of(context).generatingPatch}
+      if (patchUtils == null) {
+        _addLog(AppLocalizations.of(context).scriptFileNotFound, isError: true);
+        setState(() => _isLoading = false);
+        return;
+      }
 
-📁 ${AppLocalizations.of(context).output}:
-${stdoutBuffer.toString().trim().isNotEmpty ? stdoutBuffer.toString().trim() : '(无输出)'}
-
-⚠️ ${AppLocalizations.of(context).error}:
-${stderrBuffer.toString().trim()}''';
-        });
-        _scrollToBottom();
-      });
-
-      final exitCode = await process.exitCode;
+      // 生成补丁 manifest（带进度回调）
+      final manifest = await patchUtils.generatePatchManifest(
+        newVersionTag: newVersionTag,
+        onProgress: (String message, {bool isError = false}) {
+          _addLog(message, isError: isError);
+        },
+      );
 
       final endTime = DateTime.now();
       final duration = _startTime != null
           ? endTime.difference(_startTime!)
           : Duration.zero;
-      final durationText =
-          '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
 
-      final stdout = stdoutBuffer.toString().trim();
-      final stderr = stderrBuffer.toString().trim();
+      if (manifest != null) {
+        _addLog('');
+        _addLog('✅ ${AppLocalizations.of(context).patchGenerationSuccess}');
+        _addLog('⏱️ 总用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒');
 
-      setState(() {
-        if (exitCode == 0) {
-          _statusMessage =
-              '''
-✅ ${AppLocalizations.of(context).patchGenerationSuccess}
-$durationText
-
-📁 ${AppLocalizations.of(context).output}:
-${stdout.isNotEmpty ? stdout : '(无输出)'}
-
-⚠️ ${AppLocalizations.of(context).error}:
-${stderr.isNotEmpty ? stderr : '(无错误)'}
-
-🔍 正在验证manifest.json...''';
-        } else {
-          _statusMessage =
-              '''
-❌ ${AppLocalizations.of(context).patchGenerationFailed}
-$durationText
-🔁 ${AppLocalizations.of(context).errorCode}: $exitCode
-
-📁 ${AppLocalizations.of(context).output}:
-${stdout.isNotEmpty ? stdout : '(无输出)'}
-
-⚠️ ${AppLocalizations.of(context).error}:
-${stderr.isNotEmpty ? stderr : '(无错误)'}''';
-        }
-      });
-      _scrollToBottom();
-
-      // 如果成功，验证manifest.json
-      if (exitCode == 0) {
-        await _verifyManifest(globalMeta, stdout, stderr, durationText);
+        // 自动验证 manifest.json
+        _addLog('');
+        _addLog('🔍 正在验证 manifest.json...');
+        await _validateManifestJson(globalMeta);
+      } else {
+        _addLog(
+          '❌ ${AppLocalizations.of(context).patchGenerationFailed}',
+          isError: true,
+        );
       }
     } catch (e, stack) {
-      final endTime = DateTime.now();
-      final duration = _startTime != null
-          ? endTime.difference(_startTime!)
-          : Duration.zero;
-      final durationText =
-          '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
-
-      setState(() {
-        _statusMessage =
-            '''
-💥 ${AppLocalizations.of(context).executionError}
-$durationText
-
-⚠️ 错误详情:
-$e
-
-📋 堆栈跟踪:
-$stack''';
-      });
-      _scrollToBottom();
+      _addLog('', isError: true);
+      _addLog(
+        '💥 ${AppLocalizations.of(context).executionError}',
+        isError: true,
+      );
+      _addLog('错误详情: $e', isError: true);
+      print('堆栈跟踪: $stack');
     } finally {
-      process?.kill();
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  // 验证 manifest.json
+  Future<void> _validateManifestJson(String manifestPath) async {
+    try {
+      final manifestFile = File(manifestPath);
+      if (!manifestFile.existsSync()) {
+        _addLog('⚠️ manifest.json 不存在', isError: true);
+        return;
+      }
+
+      final content = await manifestFile.readAsString();
+      final json = jsonDecode(content) as Map<String, dynamic>;
+
+      // 检查必需字段
+      final requiredFields = [
+        'old_version_directory',
+        'new_version_directory',
+        'patch_output_directory',
+        'generation_time',
+        'total_duration_seconds',
+        'new_version_tag',
+        'patch_count',
+        'new_file_count',
+        'deleted_file_count',
+        'files',
+      ];
+
+      bool hasError = false;
+      for (var field in requiredFields) {
+        if (!json.containsKey(field)) {
+          _addLog('❌ 缺少字段: $field', isError: true);
+          hasError = true;
+        }
+      }
+
+      // 检查文件列表
+      final files = json['files'] as List<dynamic>? ?? [];
+      int errorFileCount = 0;
+
+      for (var fileData in files) {
+        final fileMap = fileData as Map<String, dynamic>;
+        final errorMessage = fileMap['error_message'] as String?;
+
+        if (errorMessage != null && errorMessage.isNotEmpty) {
+          errorFileCount++;
+          final relativePath = fileMap['relative_path'] as String? ?? '未知';
+          _addLog('❌ 文件错误: $relativePath', isError: true);
+          _addLog('   原因: $errorMessage', isError: true);
+        }
+      }
+
+      if (!hasError) {
+        _addLog('✅ manifest.json 结构正确');
+        _addLog('📊 文件总数: ${files.length}');
+        _addLog('📦 补丁文件: ${json['patch_count']}');
+        _addLog('➕ 新增文件: ${json['new_file_count']}');
+        _addLog('🗑️ 删除文件: ${json['deleted_file_count']}');
+
+        if (errorFileCount > 0) {
+          _addLog('⚠️ 失败文件: $errorFileCount', isError: true);
+        } else {
+          _addLog('✅ 所有文件处理成功');
+        }
+      }
+    } catch (e) {
+      _addLog('❌ 验证 manifest.json 失败: $e', isError: true);
     }
   }
 
@@ -309,17 +307,16 @@ $stack''';
         ),
       ),
       child: SafeArea(
-        child: SingleChildScrollView(
-          // 允许内容滚动，防止溢出
+        child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildDirectoryRow(
                 controller: _oldDirController,
                 labelText: AppLocalizations.of(context).oldVersionDir,
               ),
-              const SizedBox(height: 12.0), // 增加间距
+              const SizedBox(height: 12.0),
               _buildDirectoryRow(
                 controller: _newDirController,
                 labelText: AppLocalizations.of(context).newVersionDir,
@@ -335,56 +332,85 @@ $stack''';
                 labelText: AppLocalizations.of(context).versionWriteFile,
               ),
 
-              const SizedBox(height: 24.0), // 按钮上方多一点间距
+              const SizedBox(height: 24.0),
               _isLoading
                   ? const Center(
                       child: CupertinoActivityIndicator(radius: 15.0),
-                    ) // 适当调整加载指示器大小
+                    )
                   : Center(
                       child: CupertinoButton.filled(
                         onPressed: _generatePatch,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 40.0,
                           vertical: 14.0,
-                        ), // 调整按钮内边距
+                        ),
                         child: Text(
                           AppLocalizations.of(context).generatePatch,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ), // 按钮文字稍粗
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
-              const SizedBox(height: 24.0), // 状态消息上方多一点间距
-              Text(
-                '${AppLocalizations.of(context).logOutput}:',
-                style: const TextStyle(
-                  fontSize: 14.0,
-                  fontWeight: FontWeight.w600,
-                  color: CupertinoColors.systemGrey,
-                ),
+              const SizedBox(height: 24.0),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${AppLocalizations.of(context).logOutput}:',
+                    style: const TextStyle(
+                      fontSize: 14.0,
+                      fontWeight: FontWeight.w600,
+                      color: CupertinoColors.systemGrey,
+                    ),
+                  ),
+                  if (_logMessages.isNotEmpty)
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      minSize: 0,
+                      onPressed: _clearLogs,
+                      child: const Text('清空日志', style: TextStyle(fontSize: 12)),
+                    ),
+                ],
               ),
               const SizedBox(height: 8.0),
-              Container(
-                width: double.infinity, // 确保宽度占满
-                height: 200, // 固定高度的日志区域
-                decoration: BoxDecoration(
-                  color: AppTheme().getLogContainerBackgroundColor(context),
-                  borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(
-                    color: AppTheme().getTextFieldBorderColor(context),
+              // 日志区域使用 Expanded 占满剩余空间
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme().getLogContainerBackgroundColor(context),
+                    borderRadius: BorderRadius.circular(8.0),
+                    border: Border.all(
+                      color: AppTheme().getTextFieldBorderColor(context),
+                    ),
                   ),
-                ),
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(12.0),
-                  child: Text(
-                    _statusMessage,
-                    style: CupertinoTheme.of(context).textTheme.textStyle
-                        .copyWith(
-                          fontSize: 14.0,
-                          color: AppTheme().getLogTextColor(context),
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(12.0),
+                    itemCount: _logMessages.length,
+                    itemBuilder: (context, index) {
+                      final message = _logMessages[index];
+                      final isError =
+                          message.contains('❌') ||
+                          message.contains('💥') ||
+                          message.contains('⚠️');
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Text(
+                          message,
+                          style: CupertinoTheme.of(context).textTheme.textStyle
+                              .copyWith(
+                                fontSize: 13.0,
+                                color: isError
+                                    ? CupertinoColors.systemRed
+                                    : AppTheme().getLogTextColor(context),
+                                fontFamily: 'monospace',
+                              ),
                         ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -392,6 +418,42 @@ $stack''';
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSimpleTextField({
+    required TextEditingController controller,
+    required String labelText,
+    String? placeholder,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          labelText,
+          style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+            fontSize: 13.0,
+            color: CupertinoTheme.of(
+              context,
+            ).textTheme.textStyle.color!.withOpacity(0.7),
+          ),
+        ),
+        const SizedBox(height: 6),
+        CupertinoTextField(
+          controller: controller,
+          placeholder: placeholder ?? labelText,
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 12.0),
+          style: CupertinoTheme.of(context).textTheme.textStyle,
+          decoration: BoxDecoration(
+            color: AppTheme().getTextFieldBackgroundColor(context),
+            borderRadius: BorderRadius.circular(8.0),
+            border: Border.all(
+              color: AppTheme().getTextFieldBorderColor(context),
+            ),
+          ),
+          clearButtonMode: OverlayVisibilityMode.editing,
+        ),
+      ],
     );
   }
 
@@ -408,7 +470,7 @@ $stack''';
             fontSize: 13.0,
             color: CupertinoTheme.of(
               context,
-            ).textTheme.textStyle.color!.withOpacity(0.7),
+            ).textTheme.textStyle.color!.withValues(alpha: .7),
           ),
         ),
         const SizedBox(height: 6),
@@ -465,7 +527,7 @@ $stack''';
             fontSize: 13.0,
             color: CupertinoTheme.of(
               context,
-            ).textTheme.textStyle.color!.withOpacity(0.7),
+            ).textTheme.textStyle.color!.withValues(alpha: .7),
           ),
         ),
         const SizedBox(height: 6),
@@ -506,245 +568,6 @@ $stack''';
           ],
         ),
       ],
-    );
-  }
-}
-
-// 验证弹窗组件
-class _VerificationDialog extends StatefulWidget {
-  final String manifestPath;
-  final String stdout;
-  final String stderr;
-  final String durationText;
-
-  const _VerificationDialog({
-    required this.manifestPath,
-    required this.stdout,
-    required this.stderr,
-    required this.durationText,
-  });
-
-  @override
-  State<_VerificationDialog> createState() => _VerificationDialogState();
-}
-
-class _VerificationDialogState extends State<_VerificationDialog> {
-  bool _isLoading = true;
-  String _resultMessage = '';
-  String _currentFile = '';
-  int _verifiedCount = 0;
-  int _totalCount = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _performVerification();
-    });
-  }
-
-  Future<void> _performVerification() async {
-    final l10n = AppLocalizations.of(context);
-
-    try {
-      final manifestFile = File(widget.manifestPath);
-      if (!manifestFile.existsSync()) {
-        setState(() {
-          _isLoading = false;
-          _resultMessage = l10n.manifestNotFound;
-        });
-        return;
-      }
-
-      final manifestContent = await manifestFile.readAsString();
-      final manifest = jsonDecode(manifestContent) as Map<String, dynamic>;
-      final files = manifest['files'] as List<dynamic>? ?? [];
-
-      // 统计信息
-      int totalFiles = files.length;
-      int errorFiles = 0;
-      int successFiles = 0;
-      int deletedFiles = 0;
-      int hashVerified = 0;
-      List<String> errorMessages = [];
-
-      setState(() {
-        _totalCount = totalFiles;
-      });
-
-      // 检查每个文件
-      for (int i = 0; i < files.length; i++) {
-        final fileMap = files[i] as Map<String, dynamic>;
-        final relativePath = fileMap['relative_path'] as String? ?? '';
-
-        setState(() {
-          _verifiedCount = i + 1;
-          _currentFile = relativePath;
-        });
-
-        // 检查是否是已删除的文件
-        if (fileMap['deleted_file_only'] == true) {
-          deletedFiles++;
-          continue;
-        }
-
-        // 检查是否有错误
-        if (fileMap.containsKey('error_status')) {
-          errorFiles++;
-          final errorStatus = fileMap['error_status'] as String;
-          errorMessages.add('$relativePath\n  $errorStatus');
-        } else {
-          successFiles++;
-
-          // 验证补丁文件哈希
-          final patchFilePath = fileMap['patch_file_path'] as String?;
-          final patchFileSha256 = fileMap['patch_file_sha256'] as String?;
-
-          if (patchFilePath != null &&
-              patchFileSha256 != null &&
-              patchFileSha256.isNotEmpty) {
-            final patchFile = File(patchFilePath);
-            if (patchFile.existsSync()) {
-              try {
-                final bytes = await patchFile.readAsBytes();
-                final actualHash = sha256.convert(bytes).toString();
-                if (actualHash != patchFileSha256) {
-                  errorMessages.add('$relativePath\n  ${l10n.hashMismatch}');
-                } else {
-                  hashVerified++;
-                }
-              } catch (e) {
-                errorMessages.add('$relativePath\n  ${l10n.cannotReadPatch}');
-              }
-            } else {
-              errorMessages.add('$relativePath\n  ${l10n.patchNotFound}');
-            }
-          }
-        }
-      }
-
-      // 构建验证报告
-      final reportBuffer = StringBuffer();
-      reportBuffer.writeln('${l10n.verificationComplete}\n');
-      reportBuffer.writeln('${l10n.totalFiles}: $totalFiles');
-      reportBuffer.writeln('${l10n.successGenerated}: $successFiles');
-      reportBuffer.writeln('${l10n.failedGenerated}: $errorFiles');
-      reportBuffer.writeln('${l10n.deletedFiles}: $deletedFiles');
-      reportBuffer.writeln('${l10n.hashVerified}: $hashVerified');
-
-      if (errorMessages.isNotEmpty) {
-        reportBuffer.writeln('\n${l10n.errorDetails}:');
-        reportBuffer.writeln('─' * 30);
-        for (var msg in errorMessages) {
-          reportBuffer.writeln(msg);
-          reportBuffer.writeln('');
-        }
-      } else {
-        reportBuffer.writeln('\n${l10n.allFilesVerified}');
-      }
-
-      setState(() {
-        _isLoading = false;
-        _resultMessage = reportBuffer.toString();
-      });
-    } catch (e, stack) {
-      setState(() {
-        _isLoading = false;
-        _resultMessage = '${l10n.verificationError}: $e';
-      });
-      print('验证manifest错误: $e\n$stack');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
-    return Center(
-      child: CupertinoPopupSurface(
-        child: Container(
-          width: 320,
-          padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 标题
-            Text(
-              l10n.verifyManifest,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // 内容区域
-            if (_isLoading) ...[
-              // 加载中
-              Row(
-                children: [
-                  const CupertinoActivityIndicator(radius: 10),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${l10n.verifying} ($_verifiedCount/$_totalCount)',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        if (_currentFile.isNotEmpty)
-                          Text(
-                            _currentFile,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: CupertinoColors.systemGrey,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ] else ...[
-              // 结果
-              Container(
-                constraints: const BoxConstraints(maxHeight: 250),
-                child: SingleChildScrollView(
-                  child: Text(
-                    _resultMessage,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-
-            // 关闭按钮
-            if (!_isLoading)
-              SizedBox(
-                width: double.infinity,
-                child: CupertinoButton(
-                  color: CupertinoColors.systemBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text(
-                    l10n.close,
-                    style: const TextStyle(color: CupertinoColors.white),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-      ),
     );
   }
 }
