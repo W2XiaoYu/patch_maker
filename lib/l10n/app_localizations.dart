@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:intl/intl.dart';
 
 /// 支持的语言列表
 const List<Locale> supportedLocales = [
@@ -56,7 +54,33 @@ class AppLocalizations {
       'error': 'Error',
       'errorCode': 'Error code',
       'executionError': 'Execution error',
+      'pageSubtitle':
+          'Set the directories, choose optional processing steps, and generate both patch files and ZIP archives.',
+      'configurationSectionTitle': 'Directories & Version',
+      'configurationSectionSubtitle':
+          'Choose the old, new, and output directories, then enter the release version used for ZIP naming.',
+      'optionsSectionTitle': 'Processing Options',
+      'optionsSectionSubtitle':
+          'Extra cleanup and copy operations that run before patch generation starts.',
+      'executionSectionTitle': 'Generate & Logs',
+      'executionSectionSubtitle':
+          'Start the process here and review live output, ZIP creation, and manifest verification logs.',
+      'archivesGeneratedHint':
+          'After a successful run, the app automatically creates the full package ZIP and the patch ZIP.',
       'scriptFileNotFound': 'Error: Script file not found',
+      'zipToolNotFound': 'Error: 7z.exe not found',
+      'archiveVersionRequired':
+          'Error: Please enter the version number used for zip naming.',
+      'compressingArchives': 'Compressing zip packages...',
+      'archiveCreated': 'Archive created',
+      'archiveFailed': 'Archive creation failed',
+      'archivePreviewTitle': 'ZIP Naming Preview',
+      'archivePreviewSubtitle':
+          'Filenames are generated from the version number and today\'s date.',
+      'archivePreviewEmpty':
+          'Enter a version number to preview the ZIP filename.',
+      'fullPackageLabel': 'Full Package',
+      'patchPackageLabel': 'Patch Package',
       'fillAllRequiredFields':
           'Error: Please fill in all required directories.',
       'ensureGoExecutableExists':
@@ -66,8 +90,14 @@ class AppLocalizations {
       'darkTheme': 'Dark',
       'systemTheme': 'System',
       'cancel': 'Cancel',
+      'versionNumber': 'Version Number',
       'versionWriteFile':
           'Write the version file in the new version directory.',
+      'clearUserInformationFiles':
+          'Delete all files under Studio3DArt\\UserInformation in the new version directory',
+      'copyOldLibraryFiles':
+          'Copy all files from old Studio3DArt\\Library to new Studio3DArt\\Library',
+      'deletePdbFiles': 'Delete all .pdb files in the new version directory',
       'signFiles': 'Sign Files',
       'verifyManifest': 'Verify Manifest',
       'verifying': 'Verifying',
@@ -101,7 +131,25 @@ class AppLocalizations {
       'error': '错误',
       'errorCode': '错误码',
       'executionError': '执行出错',
+      'pageSubtitle': '配置目录、选择处理选项后，一次生成补丁文件和 ZIP 压缩包。',
+      'configurationSectionTitle': '目录与版本',
+      'configurationSectionSubtitle': '选择旧目录、新目录和输出目录，并填写用于 ZIP 命名的发布版本号。',
+      'optionsSectionTitle': '处理选项',
+      'optionsSectionSubtitle': '这些额外处理会在补丁生成前执行。',
+      'executionSectionTitle': '生成与日志',
+      'executionSectionSubtitle': '在这里启动任务，并查看实时输出、ZIP 打包和 Manifest 验证日志。',
+      'archivesGeneratedHint': '生成成功后，会自动创建完整包 ZIP 和补丁 ZIP。',
       'scriptFileNotFound': '错误：未找到脚本文件',
+      'zipToolNotFound': '错误：未找到 7z.exe',
+      'archiveVersionRequired': '错误：请填写用于 ZIP 命名的版本号',
+      'compressingArchives': '正在生成 ZIP 压缩包...',
+      'archiveCreated': '压缩包已生成',
+      'archiveFailed': '压缩包生成失败',
+      'archivePreviewTitle': 'ZIP 命名预览',
+      'archivePreviewSubtitle': '文件名会根据版本号和当天日期自动生成。',
+      'archivePreviewEmpty': '填写版本号后可预览 ZIP 文件名。',
+      'fullPackageLabel': '完整包',
+      'patchPackageLabel': '补丁包',
       'fillAllRequiredFields': '错误：请填写所有必填目录和版本标签。',
       'ensureGoExecutableExists': '请确保Go可执行文件存在且路径正确。',
       'selectTheme': '选择主题',
@@ -109,7 +157,11 @@ class AppLocalizations {
       'darkTheme': '深色',
       'systemTheme': '跟随系统',
       'cancel': '取消',
+      'versionNumber': '版本号',
       'versionWriteFile': "在新版本目录下写入版本文件",
+      'clearUserInformationFiles': '删除新目录 Studio3DArt\\UserInformation 下的所有文件',
+      'copyOldLibraryFiles': '将旧目录 Studio3DArt\\Library 下的所有文件复制到新目录',
+      'deletePdbFiles': '删除新目录里的所有 .pdb 文件',
       'signFiles': '文件签名',
       'verifyManifest': '验证 Manifest',
       'verifying': '正在验证',
@@ -166,8 +218,62 @@ class AppLocalizations {
   String get executionError =>
       _localizedValues[locale.languageCode]!['executionError']!;
 
+  String get pageSubtitle =>
+      _localizedValues[locale.languageCode]!['pageSubtitle']!;
+
+  String get configurationSectionTitle =>
+      _localizedValues[locale.languageCode]!['configurationSectionTitle']!;
+
+  String get configurationSectionSubtitle =>
+      _localizedValues[locale.languageCode]!['configurationSectionSubtitle']!;
+
+  String get optionsSectionTitle =>
+      _localizedValues[locale.languageCode]!['optionsSectionTitle']!;
+
+  String get optionsSectionSubtitle =>
+      _localizedValues[locale.languageCode]!['optionsSectionSubtitle']!;
+
+  String get executionSectionTitle =>
+      _localizedValues[locale.languageCode]!['executionSectionTitle']!;
+
+  String get executionSectionSubtitle =>
+      _localizedValues[locale.languageCode]!['executionSectionSubtitle']!;
+
+  String get archivesGeneratedHint =>
+      _localizedValues[locale.languageCode]!['archivesGeneratedHint']!;
+
   String get scriptFileNotFound =>
       _localizedValues[locale.languageCode]!['scriptFileNotFound']!;
+
+  String get zipToolNotFound =>
+      _localizedValues[locale.languageCode]!['zipToolNotFound']!;
+
+  String get archiveVersionRequired =>
+      _localizedValues[locale.languageCode]!['archiveVersionRequired']!;
+
+  String get compressingArchives =>
+      _localizedValues[locale.languageCode]!['compressingArchives']!;
+
+  String get archiveCreated =>
+      _localizedValues[locale.languageCode]!['archiveCreated']!;
+
+  String get archiveFailed =>
+      _localizedValues[locale.languageCode]!['archiveFailed']!;
+
+  String get archivePreviewTitle =>
+      _localizedValues[locale.languageCode]!['archivePreviewTitle']!;
+
+  String get archivePreviewSubtitle =>
+      _localizedValues[locale.languageCode]!['archivePreviewSubtitle']!;
+
+  String get archivePreviewEmpty =>
+      _localizedValues[locale.languageCode]!['archivePreviewEmpty']!;
+
+  String get fullPackageLabel =>
+      _localizedValues[locale.languageCode]!['fullPackageLabel']!;
+
+  String get patchPackageLabel =>
+      _localizedValues[locale.languageCode]!['patchPackageLabel']!;
 
   String get fillAllRequiredFields =>
       _localizedValues[locale.languageCode]!['fillAllRequiredFields']!;
@@ -188,8 +294,20 @@ class AppLocalizations {
 
   String get cancel => _localizedValues[locale.languageCode]!['cancel']!;
 
+  String get versionNumber =>
+      _localizedValues[locale.languageCode]!['versionNumber']!;
+
   String get versionWriteFile =>
       _localizedValues[locale.languageCode]!['versionWriteFile']!;
+
+  String get clearUserInformationFiles =>
+      _localizedValues[locale.languageCode]!['clearUserInformationFiles']!;
+
+  String get copyOldLibraryFiles =>
+      _localizedValues[locale.languageCode]!['copyOldLibraryFiles']!;
+
+  String get deletePdbFiles =>
+      _localizedValues[locale.languageCode]!['deletePdbFiles']!;
 
   String get signFiles => _localizedValues[locale.languageCode]!['signFiles']!;
 

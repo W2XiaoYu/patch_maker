@@ -33,4 +33,33 @@ class Common {
       return localPath;
     }
   }
+
+  static String? get7ZipPath() {
+    final runtimePath = path.join(
+      File(Platform.resolvedExecutable).parent.path,
+      'resources',
+      '7z.exe',
+    );
+    final runtimeFile = File(runtimePath);
+    if (runtimeFile.existsSync()) {
+      return runtimeFile.path;
+    }
+
+    if (kDebugMode) {
+      final projectPath = path.join(
+        Directory.current.path,
+        'windows',
+        'runner',
+        'resources',
+        '7z.exe',
+      );
+      final projectFile = File(projectPath);
+      if (projectFile.existsSync()) {
+        return projectFile.path;
+      }
+    }
+
+    debugPrint('7z.exe 不存在');
+    return null;
+  }
 }

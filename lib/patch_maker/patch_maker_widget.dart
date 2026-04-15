@@ -36,6 +36,9 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       TextEditingController();
   final TextEditingController _versionInputController = TextEditingController();
   bool _isGeneratVersion = false;
+  bool _shouldClearUserInformationFiles = false;
+  bool _shouldCopyOldLibraryFiles = false;
+  bool _shouldDeletePdbFiles = false;
   late String _statusMessage;
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
@@ -90,6 +93,353 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     }
   }
 
+  String _buildRealtimeStatusMessage(String stdout, String stderr) {
+    final l10n = AppLocalizations.of(context);
+    final trimmedStdout = stdout.trim();
+    final trimmedStderr = stderr.trim();
+
+    return '''
+${l10n.generatingPatch}
+
+📁 ${l10n.output}:
+${trimmedStdout.isNotEmpty ? trimmedStdout : '(无输出)'}
+
+⚠️ ${l10n.error}:
+${trimmedStderr.isNotEmpty ? trimmedStderr : '(无错误)'}''';
+  }
+
+  void _refreshRealtimeStatus(
+    StringBuffer stdoutBuffer,
+    StringBuffer stderrBuffer,
+  ) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _statusMessage = _buildRealtimeStatusMessage(
+        stdoutBuffer.toString(),
+        stderrBuffer.toString(),
+      );
+    });
+    _scrollToBottom();
+  }
+
+  void _appendStdoutLog(
+    StringBuffer stdoutBuffer,
+    StringBuffer stderrBuffer,
+    String message,
+  ) {
+    stdoutBuffer.writeln(message);
+    _refreshRealtimeStatus(stdoutBuffer, stderrBuffer);
+  }
+
+  Future<int> _deleteFilesInDirectory(Directory directory) async {
+    if (!directory.existsSync()) {
+      return 0;
+    }
+
+    final files = <File>[];
+    await for (final entity in directory.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is File) {
+        files.add(entity);
+      }
+    }
+
+    for (final file in files) {
+      await file.delete();
+    }
+
+    return files.length;
+  }
+
+  Future<int> _copyFilesRecursively(
+    Directory sourceDirectory,
+    Directory targetDirectory,
+  ) async {
+    if (!sourceDirectory.existsSync()) {
+      return 0;
+    }
+
+    int copiedCount = 0;
+    await for (final entity in sourceDirectory.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is! File) {
+        continue;
+      }
+
+      final relativePath = path.relative(
+        entity.path,
+        from: sourceDirectory.path,
+      );
+      final targetPath = path.join(targetDirectory.path, relativePath);
+      final targetFile = File(targetPath);
+      await targetFile.parent.create(recursive: true);
+      await entity.copy(targetPath);
+      copiedCount++;
+    }
+
+    return copiedCount;
+  }
+
+  Future<int> _deletePdbFilesInDirectory(Directory directory) async {
+    if (!directory.existsSync()) {
+      return 0;
+    }
+
+    final pdbFiles = <File>[];
+    await for (final entity in directory.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is File &&
+          path.extension(entity.path).toLowerCase() == '.pdb') {
+        pdbFiles.add(entity);
+      }
+    }
+
+    for (final file in pdbFiles) {
+      await file.delete();
+    }
+
+    return pdbFiles.length;
+  }
+
+  Future<void> _runPrePatchOperations(
+    String oldDir,
+    String newDir,
+    StringBuffer stdoutBuffer,
+    StringBuffer stderrBuffer,
+  ) async {
+    if (_shouldClearUserInformationFiles) {
+      final userInformationDir = Directory(
+        path.join(newDir, 'Studio3DArt', 'UserInformation'),
+      );
+      if (userInformationDir.existsSync()) {
+        final deletedCount = await _deleteFilesInDirectory(userInformationDir);
+        _appendStdoutLog(
+          stdoutBuffer,
+          stderrBuffer,
+          '🧹 已删除新目录 Studio3DArt\\UserInformation 下 $deletedCount 个文件',
+        );
+      } else {
+        _appendStdoutLog(
+          stdoutBuffer,
+          stderrBuffer,
+          'ℹ️ 新目录 Studio3DArt\\UserInformation 不存在，跳过删除',
+        );
+      }
+    }
+
+    if (_shouldCopyOldLibraryFiles) {
+      final oldLibraryDir = Directory(
+        path.join(oldDir, 'Studio3DArt', 'Library'),
+      );
+      final newLibraryDir = Directory(
+        path.join(newDir, 'Studio3DArt', 'Library'),
+      );
+
+      if (oldLibraryDir.existsSync()) {
+        final copiedCount = await _copyFilesRecursively(
+          oldLibraryDir,
+          newLibraryDir,
+        );
+        _appendStdoutLog(
+          stdoutBuffer,
+          stderrBuffer,
+          '📚 已复制旧目录 Studio3DArt\\Library 下 $copiedCount 个文件到新目录',
+        );
+      } else {
+        _appendStdoutLog(
+          stdoutBuffer,
+          stderrBuffer,
+          'ℹ️ 旧目录 Studio3DArt\\Library 不存在，跳过复制',
+        );
+      }
+    }
+
+    if (_shouldDeletePdbFiles) {
+      final newDirectory = Directory(newDir);
+      final deletedCount = await _deletePdbFilesInDirectory(newDirectory);
+      _appendStdoutLog(
+        stdoutBuffer,
+        stderrBuffer,
+        '🧽 已删除新目录下 $deletedCount 个 .pdb 文件',
+      );
+    }
+  }
+
+  String _formatArchiveDate(DateTime date) {
+    final year = date.year.toString();
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year$month$day';
+  }
+
+  String _normalizeArchiveVersion(String rawVersion) {
+    final trimmedVersion = rawVersion.trim();
+    if (trimmedVersion.isEmpty) {
+      return '';
+    }
+
+    return trimmedVersion.replaceFirst(RegExp(r'^[vV]'), '');
+  }
+
+  String _buildArchiveFileName({
+    required String version,
+    required bool isPatchArchive,
+  }) {
+    final archiveDate = _formatArchiveDate(DateTime.now());
+    final archiveSuffix = isPatchArchive ? '_Pitch' : '';
+    return '3A_Render-v${version}_Prod_Win64_$archiveDate$archiveSuffix.zip';
+  }
+
+  String _buildArchivePath(
+    String sourceDirPath, {
+    required String version,
+    required bool isPatchArchive,
+  }) {
+    final normalizedPath = path.normalize(sourceDirPath);
+    final parentDir = path.dirname(normalizedPath);
+    return path.join(
+      parentDir,
+      _buildArchiveFileName(version: version, isPatchArchive: isPatchArchive),
+    );
+  }
+
+  Future<void> _createZipArchive({
+    required String sevenZipPath,
+    required String sourceDirPath,
+    required String archivePath,
+    required Encoding systemEncoding,
+    required StringBuffer stdoutBuffer,
+    required StringBuffer stderrBuffer,
+  }) async {
+    final l10n = AppLocalizations.of(context);
+    final sourceDir = Directory(sourceDirPath);
+    if (!sourceDir.existsSync()) {
+      _appendStdoutLog(
+        stdoutBuffer,
+        stderrBuffer,
+        'ℹ️ 目录不存在，跳过压缩: $sourceDirPath',
+      );
+      return;
+    }
+
+    final entries = await sourceDir.list(followLinks: false).toList();
+    if (entries.isEmpty) {
+      _appendStdoutLog(
+        stdoutBuffer,
+        stderrBuffer,
+        'ℹ️ 目录为空，跳过压缩: $sourceDirPath',
+      );
+      return;
+    }
+
+    final archiveFile = File(archivePath);
+    if (archiveFile.existsSync()) {
+      await archiveFile.delete();
+    }
+
+    _appendStdoutLog(
+      stdoutBuffer,
+      stderrBuffer,
+      '🗜️ 正在压缩: $sourceDirPath -> $archivePath',
+    );
+
+    final process = await Process.start(
+      sevenZipPath,
+      ['a', '-tzip', archivePath, '*', '-r', '-y'],
+      workingDirectory: sourceDir.path,
+      runInShell: false,
+    );
+
+    final zipStdout = StringBuffer();
+    final zipStderr = StringBuffer();
+
+    process.stdout.transform(systemEncoding.decoder).listen((data) {
+      zipStdout.write(data);
+    });
+    process.stderr.transform(systemEncoding.decoder).listen((data) {
+      zipStderr.write(data);
+    });
+
+    final exitCode = await process.exitCode;
+    if (exitCode != 0) {
+      final errorOutput = zipStderr.toString().trim().isNotEmpty
+          ? zipStderr.toString().trim()
+          : zipStdout.toString().trim();
+      stderrBuffer.writeln(
+        '压缩失败: $sourceDirPath -> $archivePath\n$errorOutput',
+      );
+      _refreshRealtimeStatus(stdoutBuffer, stderrBuffer);
+      throw Exception('${l10n.archiveFailed}: $archivePath');
+    }
+
+    _appendStdoutLog(
+      stdoutBuffer,
+      stderrBuffer,
+      '📦 ${l10n.archiveCreated}: $archivePath',
+    );
+  }
+
+  Future<void> _createPostPatchArchives(
+    String newDir,
+    String outputDir,
+    Encoding systemEncoding,
+    StringBuffer stdoutBuffer,
+    StringBuffer stderrBuffer,
+  ) async {
+    final archiveVersion = _normalizeArchiveVersion(
+      _versionInputController.text,
+    );
+    if (archiveVersion.isEmpty) {
+      throw Exception(AppLocalizations.of(context).archiveVersionRequired);
+    }
+
+    final sevenZipPath = Common.get7ZipPath();
+    if (sevenZipPath == null || !File(sevenZipPath).existsSync()) {
+      throw Exception(AppLocalizations.of(context).zipToolNotFound);
+    }
+
+    _appendStdoutLog(
+      stdoutBuffer,
+      stderrBuffer,
+      AppLocalizations.of(context).compressingArchives,
+    );
+
+    await _createZipArchive(
+      sevenZipPath: sevenZipPath,
+      sourceDirPath: newDir,
+      archivePath: _buildArchivePath(
+        newDir,
+        version: archiveVersion,
+        isPatchArchive: false,
+      ),
+      systemEncoding: systemEncoding,
+      stdoutBuffer: stdoutBuffer,
+      stderrBuffer: stderrBuffer,
+    );
+
+    await _createZipArchive(
+      sevenZipPath: sevenZipPath,
+      sourceDirPath: outputDir,
+      archivePath: _buildArchivePath(
+        outputDir,
+        version: archiveVersion,
+        isPatchArchive: true,
+      ),
+      systemEncoding: systemEncoding,
+      stdoutBuffer: stdoutBuffer,
+      stderrBuffer: stderrBuffer,
+    );
+  }
+
   Future<void> _verifyManifest(
     String manifestPath,
     String stdout,
@@ -122,6 +472,14 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       return;
     }
 
+    if (_normalizeArchiveVersion(_versionInputController.text).isEmpty) {
+      setState(() {
+        _statusMessage = AppLocalizations.of(context).archiveVersionRequired;
+      });
+      _scrollToBottom();
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _statusMessage = AppLocalizations.of(context).generatingPatch;
@@ -134,12 +492,15 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
     final outputDir = _outputDirController.text.trim();
     final newVersionTag = _newVersionTagController.text.trim();
     final globalMeta = path.join(outputDir, 'manifest.json');
+    final stdoutBuffer = StringBuffer();
+    final stderrBuffer = StringBuffer();
     final exe = await Common.getRenderUpdaterPath(
       exeName: "patch_maker_2026-01-04.exe",
     );
 
     if (exe == null || !File(exe).existsSync()) {
       setState(() {
+        _isLoading = false;
         _statusMessage = AppLocalizations.of(context).scriptFileNotFound;
       });
       _scrollToBottom();
@@ -150,24 +511,29 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
         Platform.isWindows && Platform.localeName.contains('zh')
         ? Encoding.getByName('gbk') ?? utf8
         : utf8;
-    if (_isGeneratVersion) {
-      final version = _versionInputController.text.trim();
-
-      ///1.0.0.0521
-      final versionInfo = {
-        'currentVersion': version,
-        'buildNumber': version.split('.').last,
-        'buildDate': DateTime.now().toIso8601String(),
-      };
-      final jsonFile = File(path.join(newDir, 'version.json'));
-      await jsonFile.writeAsString(jsonEncode(versionInfo), flush: true);
-      print("✅ version.json 已写入: ${jsonFile.path}");
-    }
     Process? process;
-    final stdoutBuffer = StringBuffer();
-    final stderrBuffer = StringBuffer();
 
     try {
+      await _runPrePatchOperations(oldDir, newDir, stdoutBuffer, stderrBuffer);
+
+      if (_isGeneratVersion) {
+        final version = _versionInputController.text.trim();
+
+        ///1.0.0.0521
+        final versionInfo = {
+          'currentVersion': version,
+          'buildNumber': version.split('.').last,
+          'buildDate': DateTime.now().toIso8601String(),
+        };
+        final jsonFile = File(path.join(newDir, 'version.json'));
+        await jsonFile.writeAsString(jsonEncode(versionInfo), flush: true);
+        _appendStdoutLog(
+          stdoutBuffer,
+          stderrBuffer,
+          '✅ version.json 已写入: ${jsonFile.path}',
+        );
+      }
+
       process = await Process.start(exe, [
         '-old-dir',
         oldDir,
@@ -184,33 +550,13 @@ class _PatchMakerWidgetState extends State<PatchMakerWidget> {
       // 实时监听 stdout，每行更新UI
       process.stdout.transform(systemEncoding.decoder).listen((data) {
         stdoutBuffer.write(data);
-        setState(() {
-          _statusMessage = '''
-${AppLocalizations.of(context).generatingPatch}
-
-📁 ${AppLocalizations.of(context).output}:
-${stdoutBuffer.toString().trim()}
-
-⚠️ ${AppLocalizations.of(context).error}:
-${stderrBuffer.toString().trim().isNotEmpty ? stderrBuffer.toString().trim() : '(无错误)'}''';
-        });
-        _scrollToBottom();
+        _refreshRealtimeStatus(stdoutBuffer, stderrBuffer);
       });
 
       // 实时监听 stderr
       process.stderr.transform(systemEncoding.decoder).listen((data) {
         stderrBuffer.write(data);
-        setState(() {
-          _statusMessage = '''
-${AppLocalizations.of(context).generatingPatch}
-
-📁 ${AppLocalizations.of(context).output}:
-${stdoutBuffer.toString().trim().isNotEmpty ? stdoutBuffer.toString().trim() : '(无输出)'}
-
-⚠️ ${AppLocalizations.of(context).error}:
-${stderrBuffer.toString().trim()}''';
-        });
-        _scrollToBottom();
+        _refreshRealtimeStatus(stdoutBuffer, stderrBuffer);
       });
 
       final exitCode = await process.exitCode;
@@ -221,6 +567,16 @@ ${stderrBuffer.toString().trim()}''';
           : Duration.zero;
       final durationText =
           '⏱️ 用时: ${duration.inMinutes}分${duration.inSeconds % 60}秒${duration.inMilliseconds % 1000}毫秒';
+
+      if (exitCode == 0) {
+        await _createPostPatchArchives(
+          newDir,
+          outputDir,
+          systemEncoding,
+          stdoutBuffer,
+          stderrBuffer,
+        );
+      }
 
       final stdout = stdoutBuffer.toString().trim();
       final stderr = stderrBuffer.toString().trim();
@@ -290,9 +646,11 @@ $stack''';
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
-        middle: Text(AppLocalizations.of(context).appTitle),
+        middle: Text(l10n.appTitle),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -310,84 +668,15 @@ $stack''';
       ),
       child: SafeArea(
         child: SingleChildScrollView(
-          // 允许内容滚动，防止溢出
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDirectoryRow(
-                controller: _oldDirController,
-                labelText: AppLocalizations.of(context).oldVersionDir,
-              ),
-              const SizedBox(height: 12.0), // 增加间距
-              _buildDirectoryRow(
-                controller: _newDirController,
-                labelText: AppLocalizations.of(context).newVersionDir,
-              ),
-              const SizedBox(height: 12.0),
-              _buildDirectoryRow(
-                controller: _outputDirController,
-                labelText: AppLocalizations.of(context).outputDir,
-              ),
-              const SizedBox(height: 12.0),
-              _buildVersionRow(
-                controller: _versionInputController,
-                labelText: AppLocalizations.of(context).versionWriteFile,
-              ),
-
-              const SizedBox(height: 24.0), // 按钮上方多一点间距
-              _isLoading
-                  ? const Center(
-                      child: CupertinoActivityIndicator(radius: 15.0),
-                    ) // 适当调整加载指示器大小
-                  : Center(
-                      child: CupertinoButton.filled(
-                        onPressed: _generatePatch,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 40.0,
-                          vertical: 14.0,
-                        ), // 调整按钮内边距
-                        child: Text(
-                          AppLocalizations.of(context).generatePatch,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ), // 按钮文字稍粗
-                        ),
-                      ),
-                    ),
-              const SizedBox(height: 24.0), // 状态消息上方多一点间距
-              Text(
-                '${AppLocalizations.of(context).logOutput}:',
-                style: const TextStyle(
-                  fontSize: 14.0,
-                  fontWeight: FontWeight.w600,
-                  color: CupertinoColors.systemGrey,
-                ),
-              ),
-              const SizedBox(height: 8.0),
-              Container(
-                width: double.infinity, // 确保宽度占满
-                height: 200, // 固定高度的日志区域
-                decoration: BoxDecoration(
-                  color: AppTheme().getLogContainerBackgroundColor(context),
-                  borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(
-                    color: AppTheme().getTextFieldBorderColor(context),
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(12.0),
-                  child: Text(
-                    _statusMessage,
-                    style: CupertinoTheme.of(context).textTheme.textStyle
-                        .copyWith(
-                          fontSize: 14.0,
-                          color: AppTheme().getLogTextColor(context),
-                        ),
-                  ),
-                ),
-              ),
+              _buildConfigurationPanel(l10n),
+              const SizedBox(height: 12),
+              _buildOptionsPanel(l10n),
+              const SizedBox(height: 24),
+              _buildExecutionPanel(l10n),
             ],
           ),
         ),
@@ -395,7 +684,141 @@ $stack''';
     );
   }
 
-  Widget _buildVersionRow({
+  Widget _buildConfigurationPanel(AppLocalizations l10n) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDirectoryRow(
+          controller: _oldDirController,
+          labelText: l10n.oldVersionDir,
+        ),
+        const SizedBox(height: 12),
+        _buildDirectoryRow(
+          controller: _newDirController,
+          labelText: l10n.newVersionDir,
+        ),
+        const SizedBox(height: 12),
+        _buildDirectoryRow(
+          controller: _outputDirController,
+          labelText: l10n.outputDir,
+        ),
+        const SizedBox(height: 12),
+        _buildVersionInputRow(
+          controller: _versionInputController,
+          labelText: l10n.versionNumber,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOptionsPanel(AppLocalizations l10n) {
+    return Column(
+      children: [
+        _buildToggleRow(
+          labelText: l10n.versionWriteFile,
+          value: _isGeneratVersion,
+          onChanged: (value) {
+            setState(() {
+              _isGeneratVersion = value;
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+        _buildToggleRow(
+          labelText: l10n.clearUserInformationFiles,
+          value: _shouldClearUserInformationFiles,
+          onChanged: (value) {
+            setState(() {
+              _shouldClearUserInformationFiles = value;
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+        _buildToggleRow(
+          labelText: l10n.copyOldLibraryFiles,
+          value: _shouldCopyOldLibraryFiles,
+          onChanged: (value) {
+            setState(() {
+              _shouldCopyOldLibraryFiles = value;
+            });
+          },
+        ),
+        const SizedBox(height: 12),
+        _buildToggleRow(
+          labelText: l10n.deletePdbFiles,
+          value: _shouldDeletePdbFiles,
+          onChanged: (value) {
+            setState(() {
+              _shouldDeletePdbFiles = value;
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExecutionPanel(AppLocalizations l10n) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _isLoading
+            ? const Center(child: CupertinoActivityIndicator(radius: 15))
+            : Center(
+                child: CupertinoButton.filled(
+                  onPressed: _generatePatch,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 40,
+                    vertical: 14,
+                  ),
+                  child: Text(
+                    l10n.generatePatch,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+        const SizedBox(height: 24),
+        Text(
+          '${l10n.logOutput}:',
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: CupertinoColors.systemGrey,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          height: 200,
+          decoration: BoxDecoration(
+            color: AppTheme().getLogContainerBackgroundColor(context),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: AppTheme().getTextFieldBorderColor(context),
+            ),
+          ),
+          child: _buildLogPanel(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLogPanel() {
+    return SingleChildScrollView(
+      controller: _scrollController,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+      child: Text(
+        _statusMessage,
+        style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+          fontSize: 13.5,
+          height: 1.45,
+          color: CupertinoTheme.of(context).textTheme.textStyle.color,
+          fontFamily: Platform.isWindows ? 'Consolas' : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVersionInputRow({
     required TextEditingController controller,
     required String labelText,
   }) {
@@ -405,48 +828,59 @@ $stack''';
         Text(
           labelText,
           style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-            fontSize: 13.0,
+            fontSize: 13,
             color: CupertinoTheme.of(
               context,
-            ).textTheme.textStyle.color!.withOpacity(0.7),
+            ).textTheme.textStyle.color!.withValues(alpha: 0.7),
           ),
         ),
         const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: CupertinoTextField(
-                enabled: _isGeneratVersion,
-                controller: controller,
-                placeholder: labelText,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12.0,
-                  vertical: 12.0,
-                ),
-                style: CupertinoTheme.of(context).textTheme.textStyle,
-                decoration: BoxDecoration(
-                  color: AppTheme().getTextFieldBackgroundColor(context),
-                  borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(
-                    color: AppTheme().getTextFieldBorderColor(context),
-                  ),
-                ),
-                clearButtonMode: OverlayVisibilityMode.editing,
-              ),
+        CupertinoTextField(
+          controller: controller,
+          placeholder: labelText,
+          onChanged: (_) {
+            if (mounted) {
+              setState(() {});
+            }
+          },
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          style: CupertinoTheme.of(context).textTheme.textStyle,
+          decoration: BoxDecoration(
+            color: AppTheme().getTextFieldBackgroundColor(context),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: AppTheme().getTextFieldBorderColor(context),
             ),
-            const SizedBox(width: 8.0),
-            SizedBox(
-              width: 60,
-              child: CupertinoSwitch(
-                value: _isGeneratVersion,
-                onChanged: (bool value) {
-                  setState(() {
-                    _isGeneratVersion = value;
-                  });
-                },
-              ),
+          ),
+          clearButtonMode: OverlayVisibilityMode.editing,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildToggleRow({
+    required String labelText,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Text(
+            labelText,
+            style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+              fontSize: 13,
+              color: CupertinoTheme.of(
+                context,
+              ).textTheme.textStyle.color!.withValues(alpha: 0.9),
             ),
-          ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 60,
+          child: CupertinoSwitch(value: value, onChanged: onChanged),
         ),
       ],
     );
@@ -462,10 +896,10 @@ $stack''';
         Text(
           labelText,
           style: CupertinoTheme.of(context).textTheme.textStyle.copyWith(
-            fontSize: 13.0,
+            fontSize: 13,
             color: CupertinoTheme.of(
               context,
-            ).textTheme.textStyle.color!.withOpacity(0.7),
+            ).textTheme.textStyle.color!.withValues(alpha: 0.7),
           ),
         ),
         const SizedBox(height: 6),
@@ -476,13 +910,13 @@ $stack''';
                 controller: controller,
                 placeholder: labelText,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12.0,
-                  vertical: 12.0,
+                  horizontal: 12,
+                  vertical: 12,
                 ),
                 style: CupertinoTheme.of(context).textTheme.textStyle,
                 decoration: BoxDecoration(
                   color: AppTheme().getTextFieldBackgroundColor(context),
-                  borderRadius: BorderRadius.circular(8.0),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: AppTheme().getTextFieldBorderColor(context),
                   ),
@@ -490,15 +924,15 @@ $stack''';
                 clearButtonMode: OverlayVisibilityMode.editing,
               ),
             ),
-            const SizedBox(width: 8.0),
+            const SizedBox(width: 8),
             SizedBox(
               width: 60,
               child: CupertinoButton(
                 onPressed: () => _pickDirectory(controller),
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 child: Icon(
                   CupertinoIcons.folder_open,
-                  size: 24.0,
+                  size: 24,
                   color: CupertinoTheme.of(context).primaryColor,
                 ),
               ),
@@ -652,7 +1086,7 @@ class _VerificationDialogState extends State<_VerificationDialog> {
         _isLoading = false;
         _resultMessage = '${l10n.verificationError}: $e';
       });
-      print('验证manifest错误: $e\n$stack');
+      debugPrint('验证manifest错误: $e\n$stack');
     }
   }
 
@@ -665,85 +1099,82 @@ class _VerificationDialogState extends State<_VerificationDialog> {
         child: Container(
           width: 320,
           padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 标题
-            Text(
-              l10n.verifyManifest,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 标题
+              Text(
+                l10n.verifyManifest,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
 
-            // 内容区域
-            if (_isLoading) ...[
-              // 加载中
-              Row(
-                children: [
-                  const CupertinoActivityIndicator(radius: 10),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${l10n.verifying} ($_verifiedCount/$_totalCount)',
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        if (_currentFile.isNotEmpty)
+              // 内容区域
+              if (_isLoading) ...[
+                // 加载中
+                Row(
+                  children: [
+                    const CupertinoActivityIndicator(radius: 10),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            _currentFile,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: CupertinoColors.systemGrey,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            '${l10n.verifying} ($_verifiedCount/$_totalCount)',
+                            style: const TextStyle(fontSize: 13),
                           ),
-                      ],
+                          if (_currentFile.isNotEmpty)
+                            Text(
+                              _currentFile,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: CupertinoColors.systemGrey,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ] else ...[
-              // 结果
-              Container(
-                constraints: const BoxConstraints(maxHeight: 250),
-                child: SingleChildScrollView(
-                  child: Text(
-                    _resultMessage,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      height: 1.4,
+                  ],
+                ),
+              ] else ...[
+                // 结果
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 250),
+                  child: SingleChildScrollView(
+                    child: Text(
+                      _resultMessage,
+                      style: const TextStyle(fontSize: 13, height: 1.4),
                     ),
                   ),
                 ),
-              ),
+              ],
+
+              const SizedBox(height: 16),
+
+              // 关闭按钮
+              if (!_isLoading)
+                SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton(
+                    color: CupertinoColors.systemBlue,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      l10n.close,
+                      style: const TextStyle(color: CupertinoColors.white),
+                    ),
+                  ),
+                ),
             ],
-
-            const SizedBox(height: 16),
-
-            // 关闭按钮
-            if (!_isLoading)
-              SizedBox(
-                width: double.infinity,
-                child: CupertinoButton(
-                  color: CupertinoColors.systemBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: Text(
-                    l10n.close,
-                    style: const TextStyle(color: CupertinoColors.white),
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
-      ),
       ),
     );
   }
