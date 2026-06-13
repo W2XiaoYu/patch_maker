@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:patch_maker/installer/installer_widget.dart';
 import 'package:patch_maker/l10n/app_localizations.dart';
 import 'package:patch_maker/patch_maker/patch_maker_widget.dart';
 import 'package:patch_maker/theme/app_theme.dart';
@@ -90,23 +91,64 @@ class _MyAppState extends State<MyApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      initialRoute: '/',
-      routes: {
-        '/': (context) => PatchMakerWidget(
-          onLocaleChanged: _setLocale,
-          currentLocale: _locale,
-          onThemeChanged: _setThemeMode,
-          currentThemeMode: _themeMode,
-        ),
+      home: _MainTabView(
+        onLocaleChanged: _setLocale,
+        currentLocale: _locale,
+        onThemeChanged: _setThemeMode,
+        currentThemeMode: _themeMode,
+      ),
+    );
+  }
+}
+
+class _MainTabView extends StatelessWidget {
+  final Function(Locale) onLocaleChanged;
+  final Locale currentLocale;
+  final Function(ThemeMode) onThemeChanged;
+  final ThemeMode currentThemeMode;
+
+  const _MainTabView({
+    required this.onLocaleChanged,
+    required this.currentLocale,
+    required this.onThemeChanged,
+    required this.currentThemeMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CupertinoTabScaffold(
+      tabBar: CupertinoTabBar(
+        items: [
+          BottomNavigationBarItem(
+            icon: const Icon(CupertinoIcons.hammer),
+            label: AppLocalizations.of(context).tabGenerator,
+          ),
+          BottomNavigationBarItem(
+            icon: const Icon(CupertinoIcons.arrow_down_doc),
+            label: AppLocalizations.of(context).tabInstaller,
+          ),
+        ],
+      ),
+      tabBuilder: (context, index) {
+        switch (index) {
+          case 0:
+            return PatchMakerWidget(
+              onLocaleChanged: onLocaleChanged,
+              currentLocale: currentLocale,
+              onThemeChanged: onThemeChanged,
+              currentThemeMode: currentThemeMode,
+            );
+          case 1:
+            return InstallerWidget(
+              onLocaleChanged: onLocaleChanged,
+              currentLocale: currentLocale,
+              onThemeChanged: onThemeChanged,
+              currentThemeMode: currentThemeMode,
+            );
+          default:
+            return const SizedBox.shrink();
+        }
       },
-      // home: Builder(
-      //   builder: (context) => PatchMakerWidget(
-      //     onLocaleChanged: _setLocale,
-      //     currentLocale: _locale,
-      //     onThemeChanged: _setThemeMode,
-      //     currentThemeMode: _themeMode,
-      //   ),
-      // ),
     );
   }
 }

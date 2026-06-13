@@ -4,65 +4,53 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:patch_maker/model/manifest_metadata.dart';
-import 'package:patch_maker/utils/common.dart';
+import 'package:patch_maker/xdelta3/xdelta3.dart';
 
 class PatchUtils {
   final String oldPath;
   final String newPath;
   final String outputPath;
-  late String exePath;
 
   PatchUtils._({
     required this.oldPath,
     required this.newPath,
     required this.outputPath,
-    required this.exePath,
   });
 
-  /// 创建 PatchUtils 实例
-  static Future<PatchUtils?> create({
+  static PatchUtils? create({
     required String oldPath,
     required String newPath,
     required String outputPath,
-  }) async {
-    final exe = await Common.getRenderUpdaterPath(
-      exeName: "xdelta3-3.0.11-x86_64.exe",
-    );
-
-    if (exe == null || exe.isEmpty) {
-      print('错误: 无法找到 xdelta3 可执行文件');
-      return null;
-    }
-
+  }) {
     return PatchUtils._(
       oldPath: oldPath,
       newPath: newPath,
       outputPath: outputPath,
-      exePath: exe,
     );
   }
 
   /// 生成补丁并返回完整的 manifest
   Future<ManifestMetadata?> generatePatchManifest({
     String newVersionTag = "",
-    Function(String message, {bool isError})? onProgress, // 添加进度回调（支持错误标记）
+    Function(String message, {bool isError})? onProgress,
   }) async {
     final startTime = DateTime.now();
     final List<FileMetadata> fileResults = [];
 
-    // 获取需要处理的文件列表
     onProgress?.call('📂 正在扫描文件...', isError: false);
     final tasks = await _buildTaskList();
     final newFilesMap = <String, bool>{};
 
     print('开始生成补丁，共 ${tasks.length} 个文件需要处理...');
-    onProgress?.call('✅ 扫描完成，共 ${tasks.length} 个文件需要处理', isError: false);
+    onProgress?.call(
+      '✅ 扫描完成，共 ${tasks.length} 个文件需要处理',
+      isError: false,
+    );
 
     int patchCount = 0;
     int newFileCount = 0;
     int errorCount = 0;
 
-    // 处理新版本文件（生成补丁或标记为新文件）
     for (var i = 0; i < tasks.length; i++) {
       final task = tasks[i];
       final relativePath = task['relative_path']!;
@@ -88,7 +76,6 @@ class PatchUtils {
 
         if (metadata.errorMessage != null &&
             metadata.errorMessage!.isNotEmpty) {
-          // 有错误
           errorCount++;
           onProgress?.call(
             '❌ [${i + 1}/${tasks.length}] 失败: $relativePath',
@@ -109,11 +96,9 @@ class PatchUtils {
         }
       }
 
-      // 每处理一个文件后让出控制权给 UI 线程
       await Future.delayed(Duration.zero);
     }
 
-    // 检查删除的文件
     onProgress?.call('🔍 检查已删除的文件...', isError: false);
     int deletedFileCount = 0;
     final deletedFiles = await _findDeletedFiles(newFilesMap);
@@ -121,26 +106,29 @@ class PatchUtils {
       fileResults.add(deletedMeta);
       deletedFileCount++;
       print('删除文件: ${deletedMeta.relativePath}');
-      onProgress?.call('🗑️ 已删除: ${deletedMeta.relativePath}', isError: false);
-
-      // 让出控制权给 UI 线程
+      onProgress?.call(
+        '🗑️ 已删除: ${deletedMeta.relativePath}',
+        isError: false,
+      );
       await Future.delayed(Duration.zero);
     }
 
     final endTime = DateTime.now();
     final duration = endTime.difference(startTime).inMilliseconds / 1000.0;
 
-    // 生成总结信息
     onProgress?.call('', isError: false);
     onProgress?.call('━━━━━━━━━━━━━━━━━━━━━━━━━━', isError: false);
-    onProgress?.call('�� 处理完成！统计信息：', isError: false);
+    onProgress?.call('📦 处理完成！统计信息：', isError: false);
     onProgress?.call('  ✅ 补丁文件: $patchCount 个', isError: false);
     onProgress?.call('  ➕ 新增文件: $newFileCount 个', isError: false);
     onProgress?.call('  🗑️ 删除文件: $deletedFileCount 个', isError: false);
     if (errorCount > 0) {
       onProgress?.call('  ❌ 失败文件: $errorCount 个', isError: true);
     }
-    onProgress?.call('  📦 总文件数: ${fileResults.length} 个', isError: false);
+    onProgress?.call(
+      '  📦 总文件数: ${fileResults.length} 个',
+      isError: false,
+    );
     onProgress?.call(
       '  ⏱️ 总用时: ${duration.toStringAsFixed(2)} 秒',
       isError: false,
@@ -167,33 +155,26 @@ class PatchUtils {
     return manifest;
   }
 
-  /// 查找被删除的文件
   Future<List<FileMetadata>> _findDeletedFiles(
     Map<String, bool> newFilesMap,
   ) async {
     final deletedFiles = <FileMetadata>[];
     final oldDir = Directory(oldPath);
 
-    if (!oldDir.existsSync()) {
-      return deletedFiles;
-    }
+    if (!oldDir.existsSync()) return deletedFiles;
 
     await for (var entity in oldDir.list(recursive: true, followLinks: false)) {
       if (entity is File) {
         final relativePath = entity.path.substring(oldPath.length + 1);
-
-        // 如果新版本中不存在此文件，则标记为删除
         if (!newFilesMap.containsKey(relativePath)) {
-          final oldFileSha256 = await _calculateSha256(entity.path);
-          final oldFileSize = await entity.length();
-
+          final sha = await compute(_sha256Isolate, entity.path);
           deletedFiles.add(
             FileMetadata(
               relativePath: relativePath,
               newFileSha256: '',
               patchFileSha256: '',
-              oldFileSizeBytes: oldFileSize,
-              oldFileSha256: oldFileSha256,
+              oldFileSizeBytes: await entity.length(),
+              oldFileSha256: sha,
               deletedFileOnly: true,
             ),
           );
@@ -204,7 +185,6 @@ class PatchUtils {
     return deletedFiles;
   }
 
-  /// 构建任务列表
   Future<List<Map<String, String>>> _buildTaskList() async {
     final tasks = <Map<String, String>>[];
     final oldDir = Directory(oldPath);
@@ -214,25 +194,21 @@ class PatchUtils {
       print('错误: 旧版本目录不存在: $oldPath');
       return tasks;
     }
-
     if (!newDir.existsSync()) {
       print('错误: 新版本目录不存在: $newPath');
       return tasks;
     }
 
-    // 遍历新版本目录的所有文件
     await for (var entity in newDir.list(recursive: true, followLinks: false)) {
       if (entity is File) {
         final relativePath = entity.path.substring(newPath.length + 1);
-        final oldFilePath = '$oldPath${Platform.pathSeparator}$relativePath';
-        final outputFilePath =
-            '$outputPath${Platform.pathSeparator}$relativePath.patch';
-
         tasks.add({
           'relative_path': relativePath,
-          'old_full_path': oldFilePath,
+          'old_full_path':
+              '$oldPath${Platform.pathSeparator}$relativePath',
           'new_full_path': entity.path,
-          'output_path': outputFilePath,
+          'output_path':
+              '$outputPath${Platform.pathSeparator}$relativePath.patch',
         });
       }
     }
@@ -240,26 +216,21 @@ class PatchUtils {
     return tasks;
   }
 
-  /// 写入 manifest 文件
   Future<void> _writeManifestFile(ManifestMetadata manifest) async {
     try {
-      final manifestPath = '$outputPath${Platform.pathSeparator}manifest.json';
+      final manifestPath =
+          '$outputPath${Platform.pathSeparator}manifest.json';
       final manifestFile = File(manifestPath);
-
-      // 确保输出目录存在
       await manifestFile.parent.create(recursive: true);
-
-      // 写入格式化的 JSON
-      final jsonStr = JsonEncoder.withIndent('  ').convert(manifest.toJson());
+      final jsonStr =
+          JsonEncoder.withIndent('  ').convert(manifest.toJson());
       await manifestFile.writeAsString(jsonStr);
-
       print('Manifest 已写入: $manifestPath');
     } catch (e) {
       print('写入 manifest 失败: $e');
     }
   }
 
-  /// 生成单个补丁文件（带重试功能）
   Future<FileMetadata?> _makeSinglePatchWithRetry({
     required String relativePath,
     required String oldFile,
@@ -280,14 +251,7 @@ class PatchUtils {
           newFile: newFile,
           patchOut: patchOut,
         );
-
-        // 如果成功，返回结果
-        if (metadata != null) {
-          return metadata;
-        }
-
-        // 如果返回 null（文件未变化或新文件），也认为是成功
-        return null;
+        return metadata;
       } catch (e) {
         lastError = e.toString();
         print('处理文件失败 ($attempt/$maxRetries): $relativePath - $e');
@@ -295,11 +259,8 @@ class PatchUtils {
           '⚠️ 处理失败 (尝试 $attempt/$maxRetries): $relativePath',
           isError: true,
         );
-
-        // 如果不是最后一次尝试，等待一小段时间再重试
         if (attempt < maxRetries) {
           await Future.delayed(Duration(milliseconds: 500 * attempt));
-          print('重试中... ($attempt/$maxRetries)');
           onProgress?.call(
             '🔄 重试中 ($attempt/$maxRetries): $relativePath',
             isError: false,
@@ -308,7 +269,6 @@ class PatchUtils {
       }
     }
 
-    // 所有重试都失败后，返回带错误信息的 FileMetadata
     print('文件处理失败（已重试 $maxRetries 次）: $relativePath - $lastError');
     onProgress?.call(
       '💥 最终失败（已重试 $maxRetries 次）: $relativePath',
@@ -322,164 +282,191 @@ class PatchUtils {
     );
   }
 
-  /// 生成单个补丁文件
+  /// 生成单个补丁文件（在 isolate 中执行，不阻塞 UI）
   Future<FileMetadata?> makeSinglePatch({
     required String relativePath,
     required String oldFile,
     required String newFile,
     required String patchOut,
   }) async {
-    final oldExists = File(oldFile).existsSync();
-    final newExists = File(newFile).existsSync();
+    final result = await compute(_makePatchIsolate, {
+      'relative_path': relativePath,
+      'old_file': oldFile,
+      'new_file': newFile,
+      'patch_out': patchOut,
+      'output_path': outputPath,
+    });
 
-    if (!newExists) {
-      throw Exception('新文件不存在: $newFile');
-    }
+    final action = result['action'] as String;
 
-    // 确保输出目录存在
-    final patchFile = File(patchOut);
-    await patchFile.parent.create(recursive: true);
-
-    // 如果旧文件不存在，这是一个新文件，需要复制到输出目录
-    if (!oldExists) {
-      print('新增文件: $relativePath');
-      return await _createNewFileMetadata(relativePath, newFile);
-    }
-
-    // 检查文件是否真的有变化（SHA256 + 文件大小）
-    final oldFileObj = File(oldFile);
-    final newFileObj = File(newFile);
-    final oldFileSize = await oldFileObj.length();
-    final newFileSize = await newFileObj.length();
-
-    // 只有在文件大小不同时才计算 SHA256（性能优化）
-    if (oldFileSize == newFileSize) {
-      final oldHash = await _calculateSha256(oldFile);
-      final newHash = await _calculateSha256(newFile);
-
-      if (oldHash == newHash) {
-        print('未变化: $relativePath');
-        return null; // 文件没有变化，跳过
-      }
-    }
-
-    print('发现变化: $relativePath');
-
-    // 执行 xdelta3 生成补丁
-    final result = await Process.run(exePath, [
-      '-e',
-      '-s',
-      oldFile,
-      newFile,
-      patchOut,
-    ], runInShell: true);
-
-    if (result.exitCode == 0) {
-      return await _createPatchMetadata(
-        relativePath: relativePath,
-        oldFile: oldFile,
-        newFile: newFile,
-        patchFile: patchOut,
-      );
-    } else {
-      // xdelta3 执行失败，抛出异常以便重试
-      throw Exception(
-        'xdelta3 生成补丁失败 (退出码: ${result.exitCode}): ${result.stderr}',
-      );
-    }
-  }
-
-  /// 创建新文件的元数据（将新文件复制到输出目录）
-  Future<FileMetadata> _createNewFileMetadata(
-    String relativePath,
-    String newFile,
-  ) async {
-    final newFileObj = File(newFile);
-    final newFileSize = await newFileObj.length();
-    final newFileSha256 = await _calculateSha256(newFile);
-
-    // 复制新文件到输出目录
-    final outputFilePath = '$outputPath${Platform.pathSeparator}$relativePath';
-    final outputFile = File(outputFilePath);
-    await outputFile.parent.create(recursive: true);
-    await newFileObj.copy(outputFilePath);
-
-    print('成功复制新增文件: $relativePath');
-
-    return FileMetadata(
-      relativePath: relativePath,
-      newFileSha256: newFileSha256,
-      patchFileSha256: '',
-      newFileSizeBytes: newFileSize,
-      newFileOnly: true,
-    );
-  }
-
-  /// 创建补丁文件的元数据
-  Future<FileMetadata> _createPatchMetadata({
-    required String relativePath,
-    required String oldFile,
-    required String newFile,
-    required String patchFile,
-  }) async {
-    final oldFileObj = File(oldFile);
-    final newFileObj = File(newFile);
-    final patchFileObj = File(patchFile);
-
-    final oldFileSize = await oldFileObj.length();
-    final newFileSize = await newFileObj.length();
-    final patchFileSize = await patchFileObj.length();
-
-    final oldFileSha256 = await _calculateSha256(oldFile);
-    final newFileSha256 = await _calculateSha256(newFile);
-    final patchFileSha256 = await _calculateSha256(patchFile);
-
-    final compressionRatio = (patchFileSize / newFileSize) * 100;
-
-    return FileMetadata(
-      relativePath: relativePath,
-      newFileSha256: newFileSha256,
-      patchFileSha256: patchFileSha256,
-      oldFileSizeBytes: oldFileSize,
-      newFileSizeBytes: newFileSize,
-      patchFileSizeBytes: patchFileSize,
-      oldFileSha256: oldFileSha256,
-      compressionRatioPercent: compressionRatio,
-    );
-  }
-
-  /// 计算文件的 SHA256（在独立 isolate 中执行，避免阻塞 UI）
-  Future<String> _calculateSha256(String filePath) async {
-    try {
-      final file = File(filePath);
-      final fileSize = await file.length();
-
-      // 小文件直接计算，大文件使用 compute 在独立线程中计算
-      if (fileSize < 10 * 1024 * 1024) {
-        // 小于 10MB，直接计算
-        final bytes = await file.readAsBytes();
-        final digest = sha256.convert(bytes);
-        return digest.toString();
-      } else {
-        // 大于 10MB，使用 compute 在独立 isolate 中计算
-        return await compute(_calculateSha256InIsolate, filePath);
-      }
-    } catch (e) {
-      print('计算 SHA256 失败: $e');
-      return '';
+    switch (action) {
+      case 'unchanged':
+        return null;
+      case 'new_file':
+        return FileMetadata(
+          relativePath: relativePath,
+          newFileSha256: result['new_file_sha256'] as String,
+          patchFileSha256: '',
+          newFileSizeBytes: result['new_file_size_bytes'] as int,
+          newFileOnly: true,
+          newFilePath: newFile,
+          oldFilePath: oldFile,
+        );
+      case 'patch':
+        return FileMetadata(
+          relativePath: relativePath,
+          newFileSha256: result['new_file_sha256'] as String,
+          patchFileSha256: result['patch_file_sha256'] as String,
+          oldFileSizeBytes: result['old_file_size_bytes'] as int,
+          newFileSizeBytes: result['new_file_size_bytes'] as int,
+          patchFileSizeBytes: result['patch_file_size_bytes'] as int,
+          oldFileSha256: result['old_file_sha256'] as String,
+          compressionRatioPercent: result['compression_ratio_percent'] as double,
+          oldFilePath: result['old_file_path'] as String,
+          newFilePath: result['new_file_path'] as String,
+          patchFilePath: result['patch_file_path'] as String,
+          generationTime: result['generation_time'] as String,
+        );
+      default:
+        throw Exception(result['error_message'] as String);
     }
   }
 }
 
-/// 在独立 isolate 中计算 SHA256（顶层函数或静态方法）
-String _calculateSha256InIsolate(String filePath) {
+// ============================================================
+// Isolate 入口（顶层函数）
+// ============================================================
+
+/// 在独立 isolate 中完成：比较 → 流式编码 → 写补丁 → 算哈希
+Future<Map<String, dynamic>> _makePatchIsolate(Map<String, String> args) async {
+  final oldFileStr = args['old_file']!;
+  final newFileStr = args['new_file']!;
+  final patchOutStr = args['patch_out']!;
+  final outputPath = args['output_path']!;
+  final relativePath = args['relative_path']!;
+
+  try {
+    final newFile = File(newFileStr);
+    if (!newFile.existsSync()) {
+      return {'action': 'error', 'error_message': '新文件不存在: $newFileStr'};
+    }
+
+    final oldFile = File(oldFileStr);
+    final newFileSize = newFile.lengthSync();
+
+    // 旧文件不存在 → 新文件，复制到输出目录
+    if (!oldFile.existsSync()) {
+      final sha = await _fileSha256(newFileStr);
+      final dest = '$outputPath${Platform.pathSeparator}$relativePath';
+      File(dest).parent.createSync(recursive: true);
+      newFile.copySync(dest);
+      return {
+        'action': 'new_file',
+        'new_file_sha256': sha,
+        'new_file_size_bytes': newFileSize,
+      };
+    }
+
+    final oldFileSize = oldFile.lengthSync();
+
+    // 大小相同时比较 SHA256 判断是否变化（分块计算，不全载入内存）
+    if (oldFileSize == newFileSize) {
+      final oldSha = await _fileSha256(oldFileStr);
+      final newSha = await _fileSha256(newFileStr);
+      if (oldSha == newSha) {
+        return {'action': 'unchanged'};
+      }
+    }
+
+    // 流式编码（所有文件统一走流式）
+    final xd3 = Xdelta3();
+    try {
+      final patchFile = File(patchOutStr);
+      patchFile.parent.createSync(recursive: true);
+
+      final ok = await xd3.encodeFile(
+        newFilePath: newFileStr,
+        oldFilePath: oldFileStr,
+        outputPatchPath: patchOutStr,
+      );
+
+      if (!ok) {
+        return {
+          'action': 'error',
+          'error_message': 'xdelta3 流式编码失败',
+        };
+      }
+
+      final patchFileSize = patchFile.lengthSync();
+      final newSha = await _fileSha256(newFileStr);
+      final oldSha = await _fileSha256(oldFileStr);
+      final patchSha = await _fileSha256(patchOutStr);
+
+      return {
+        'action': 'patch',
+        'new_file_sha256': newSha,
+        'patch_file_sha256': patchSha,
+        'old_file_size_bytes': oldFileSize,
+        'new_file_size_bytes': newFileSize,
+        'patch_file_size_bytes': patchFileSize,
+        'old_file_sha256': oldSha,
+        'compression_ratio_percent': (patchFileSize / newFileSize) * 100,
+        'old_file_path': oldFileStr,
+        'new_file_path': newFileStr,
+        'patch_file_path': patchOutStr,
+        'generation_time': DateTime.now().toIso8601String(),
+      };
+    } finally {
+      xd3.close();
+    }
+  } catch (e) {
+    return {'action': 'error', 'error_message': e.toString()};
+  }
+}
+
+/// 分块计算文件 SHA256（不全载入内存）
+Future<String> _fileSha256(String filePath) async {
+  return compute(_fileSha256Isolate, filePath);
+}
+
+/// Isolate 中分块计算 SHA256
+String _fileSha256Isolate(String filePath) {
   try {
     final file = File(filePath);
-    final bytes = file.readAsBytesSync();
-    final digest = sha256.convert(bytes);
-    return digest.toString();
+    if (!file.existsSync()) return '';
+    final raf = file.openSync();
+    try {
+      final sink = _DigestSink();
+      final input = sha256.startChunkedConversion(sink);
+      final buf = Uint8List(64 * 1024 * 1024);
+      while (true) {
+        final n = raf.readIntoSync(buf);
+        if (n == 0) break;
+        input.add(Uint8List.sublistView(buf, 0, n));
+      }
+      input.close();
+      return sink.digest.toString();
+    } finally {
+      raf.closeSync();
+    }
+  } catch (_) {
+    return '';
+  }
+}
+
+class _DigestSink implements Sink<Digest> {
+  Digest digest = Digest([]);
+  @override
+  void add(Digest data) => digest = data;
+  @override
+  void close() {}
+}
+
+/// 在 isolate 中计算文件 SHA256（已废弃，保留兼容）
+String _sha256Isolate(String filePath) {
+  try {
+    return sha256.convert(File(filePath).readAsBytesSync()).toString();
   } catch (e) {
-    print('Isolate 中计算 SHA256 失败: $e');
     return '';
   }
 }

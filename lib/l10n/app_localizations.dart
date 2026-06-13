@@ -85,6 +85,15 @@ class AppLocalizations {
       'cannotReadPatch': 'Cannot read patch file',
       'patchNotFound': 'Patch file not found',
       'close': 'Close',
+      'tabGenerator': 'Generate',
+      'tabInstaller': 'Install',
+      'installerTitle': 'Patch Installer',
+      'patchDir': 'Patch Directory',
+      'installDir': 'Install Directory (Old Version)',
+      'installPatch': 'Install Patch',
+      'installingPatch': 'Installing patch...',
+      'installSuccess': 'Patch installation successful!',
+      'installFailed': 'Patch installation failed!',
     },
     'zh': {
       'appTitle': '更新补丁生成器',
@@ -127,6 +136,15 @@ class AppLocalizations {
       'cannotReadPatch': '无法读取补丁文件',
       'patchNotFound': '补丁文件不存在',
       'close': '关闭',
+      'tabGenerator': '生成',
+      'tabInstaller': '安装',
+      'installerTitle': '补丁安装器',
+      'patchDir': '补丁目录',
+      'installDir': '安装目录（旧版本所在位置）',
+      'installPatch': '安装补丁',
+      'installingPatch': '正在安装补丁...',
+      'installSuccess': '补丁安装成功！',
+      'installFailed': '补丁安装失败！',
     },
   };
 
@@ -238,4 +256,31 @@ class AppLocalizations {
       _localizedValues[locale.languageCode]!['patchNotFound']!;
 
   String get close => _localizedValues[locale.languageCode]!['close']!;
+
+  String get tabGenerator =>
+      _localizedValues[locale.languageCode]!['tabGenerator']!;
+
+  String get tabInstaller =>
+      _localizedValues[locale.languageCode]!['tabInstaller']!;
+
+  String get installerTitle =>
+      _localizedValues[locale.languageCode]!['installerTitle']!;
+
+  String get patchDir =>
+      _localizedValues[locale.languageCode]!['patchDir']!;
+
+  String get installDir =>
+      _localizedValues[locale.languageCode]!['installDir']!;
+
+  String get installPatch =>
+      _localizedValues[locale.languageCode]!['installPatch']!;
+
+  String get installingPatch =>
+      _localizedValues[locale.languageCode]!['installingPatch']!;
+
+  String get installSuccess =>
+      _localizedValues[locale.languageCode]!['installSuccess']!;
+
+  String get installFailed =>
+      _localizedValues[locale.languageCode]!['installFailed']!;
 }

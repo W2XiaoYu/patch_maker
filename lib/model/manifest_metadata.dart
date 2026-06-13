@@ -78,6 +78,18 @@ class FileMetadata {
   @JsonKey(name: 'compression_ratio_percent')
   final double? compressionRatioPercent;
 
+  @JsonKey(name: 'old_file_path')
+  final String? oldFilePath;
+
+  @JsonKey(name: 'new_file_path')
+  final String? newFilePath;
+
+  @JsonKey(name: 'patch_file_path')
+  final String? patchFilePath;
+
+  @JsonKey(name: 'generation_time')
+  final String? generationTime;
+
   @JsonKey(name: 'new_file_only')
   final bool? newFileOnly;
 
@@ -96,6 +108,10 @@ class FileMetadata {
     this.patchFileSizeBytes,
     this.oldFileSha256,
     this.compressionRatioPercent,
+    this.oldFilePath,
+    this.newFilePath,
+    this.patchFilePath,
+    this.generationTime,
     this.newFileOnly,
     this.deletedFileOnly,
     this.errorMessage,
