@@ -52,8 +52,6 @@ dart run icons_launcher:create
 # 静态分析
 dart analyze lib/
 
-# 流式 API 自测
-dart run test_streaming.dart
 ```
 
 ## 依赖

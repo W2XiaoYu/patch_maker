@@ -5,7 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as path;
 import 'package:patch_maker/model/manifest_metadata.dart';
-import 'package:patch_maker/xdelta3/xdelta3.dart';
+import 'package:patch_maker/xdelta3/xdelta3_exe.dart';
 
 class PatchInstaller {
   final String patchDir;
@@ -238,32 +238,27 @@ Future<Map<String, dynamic>> _decodePatchIsolate(Map<String, dynamic> args) asyn
   final outputFilePath = args['output_file'] as String;
 
   try {
-    final xd3 = Xdelta3();
-    try {
-      final ok = await xd3.decodeFile(
-        patchFilePath: patchFilePath,
-        oldFilePath: oldFilePath,
-        outputFilePath: outputFilePath,
-      );
+    final ok = await Xdelta3Exe().decodeFile(
+      patchFilePath: patchFilePath,
+      oldFilePath: oldFilePath,
+      outputFilePath: outputFilePath,
+    );
 
-      if (!ok) {
-        return {
-          'is_ok': false,
-          'error_message': 'xdelta3 流式解码失败',
-        };
-      }
-
-      final outputSize = File(outputFilePath).lengthSync();
-      final outputSha256 = await _fileSha256(outputFilePath);
-
+    if (!ok) {
       return {
-        'is_ok': true,
-        'output_sha256': outputSha256,
-        'output_size': outputSize,
+        'is_ok': false,
+        'error_message': 'xdelta3.exe 解码失败',
       };
-    } finally {
-      xd3.close();
     }
+
+    final outputSize = File(outputFilePath).lengthSync();
+    final outputSha256 = await _fileSha256(outputFilePath);
+
+    return {
+      'is_ok': true,
+      'output_sha256': outputSha256,
+      'output_size': outputSize,
+    };
   } catch (e) {
     return {
       'is_ok': false,

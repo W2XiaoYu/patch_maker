@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:patch_maker/model/manifest_metadata.dart';
-import 'package:patch_maker/xdelta3/xdelta3.dart';
+import 'package:patch_maker/xdelta3/xdelta3_exe.dart';
 
 class PatchUtils {
   final String oldPath;
@@ -145,6 +145,7 @@ class PatchUtils {
       patchCount: patchCount,
       newFileCount: newFileCount,
       deletedFileCount: deletedFileCount,
+      patchAlgorithm: 'xdelta3',
       files: fileResults,
     );
 
@@ -378,47 +379,42 @@ Future<Map<String, dynamic>> _makePatchIsolate(Map<String, String> args) async {
       }
     }
 
-    // 流式编码（所有文件统一走流式）
-    final xd3 = Xdelta3();
-    try {
-      final patchFile = File(patchOutStr);
-      patchFile.parent.createSync(recursive: true);
+    // subprocess 编码（在独立进程内执行，避免 FFI 内存问题）
+    final patchFile = File(patchOutStr);
+    patchFile.parent.createSync(recursive: true);
 
-      final ok = await xd3.encodeFile(
-        newFilePath: newFileStr,
-        oldFilePath: oldFileStr,
-        outputPatchPath: patchOutStr,
-      );
+    final ok = await Xdelta3Exe().encodeFile(
+      newFilePath: newFileStr,
+      oldFilePath: oldFileStr,
+      outputPatchPath: patchOutStr,
+    );
 
-      if (!ok) {
-        return {
-          'action': 'error',
-          'error_message': 'xdelta3 流式编码失败',
-        };
-      }
-
-      final patchFileSize = patchFile.lengthSync();
-      final newSha = await _fileSha256(newFileStr);
-      final oldSha = await _fileSha256(oldFileStr);
-      final patchSha = await _fileSha256(patchOutStr);
-
+    if (!ok) {
       return {
-        'action': 'patch',
-        'new_file_sha256': newSha,
-        'patch_file_sha256': patchSha,
-        'old_file_size_bytes': oldFileSize,
-        'new_file_size_bytes': newFileSize,
-        'patch_file_size_bytes': patchFileSize,
-        'old_file_sha256': oldSha,
-        'compression_ratio_percent': (patchFileSize / newFileSize) * 100,
-        'old_file_path': oldFileStr,
-        'new_file_path': newFileStr,
-        'patch_file_path': patchOutStr,
-        'generation_time': DateTime.now().toIso8601String(),
+        'action': 'error',
+        'error_message': 'xdelta3.exe 编码失败',
       };
-    } finally {
-      xd3.close();
     }
+
+    final patchFileSize = patchFile.lengthSync();
+    final newSha = await _fileSha256(newFileStr);
+    final oldSha = await _fileSha256(oldFileStr);
+    final patchSha = await _fileSha256(patchOutStr);
+
+    return {
+      'action': 'patch',
+      'new_file_sha256': newSha,
+      'patch_file_sha256': patchSha,
+      'old_file_size_bytes': oldFileSize,
+      'new_file_size_bytes': newFileSize,
+      'patch_file_size_bytes': patchFileSize,
+      'old_file_sha256': oldSha,
+      'compression_ratio_percent': (patchFileSize / newFileSize) * 100,
+      'old_file_path': oldFileStr,
+      'new_file_path': newFileStr,
+      'patch_file_path': patchOutStr,
+      'generation_time': DateTime.now().toIso8601String(),
+    };
   } catch (e) {
     return {'action': 'error', 'error_message': e.toString()};
   }

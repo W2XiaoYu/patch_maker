@@ -107,7 +107,7 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
 
-# Install xdelta3 DLL
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/resources/xdelta3.dll"
+# Install xdelta3 EXE (official 3.0.10, called via subprocess)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/resources/xdelta3.exe"
   DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)

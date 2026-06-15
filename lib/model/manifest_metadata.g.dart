@@ -17,6 +17,7 @@ ManifestMetadata _$ManifestMetadataFromJson(Map<String, dynamic> json) =>
       patchCount: (json['patch_count'] as num).toInt(),
       newFileCount: (json['new_file_count'] as num).toInt(),
       deletedFileCount: (json['deleted_file_count'] as num).toInt(),
+      patchAlgorithm: json['patch_algorithm'] as String? ?? 'xdelta3',
       files: (json['files'] as List<dynamic>)
           .map((e) => FileMetadata.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -33,6 +34,7 @@ Map<String, dynamic> _$ManifestMetadataToJson(ManifestMetadata instance) =>
       'patch_count': instance.patchCount,
       'new_file_count': instance.newFileCount,
       'deleted_file_count': instance.deletedFileCount,
+      'patch_algorithm': instance.patchAlgorithm,
       'files': instance.files.map((e) => e.toJson()).toList(),
     };
 

@@ -31,6 +31,9 @@ class ManifestMetadata {
   @JsonKey(name: 'deleted_file_count')
   final int deletedFileCount;
 
+  @JsonKey(name: 'patch_algorithm', defaultValue: 'xdelta3')
+  final String patchAlgorithm;
+
   final List<FileMetadata> files;
 
   ManifestMetadata({
@@ -43,6 +46,7 @@ class ManifestMetadata {
     required this.patchCount,
     required this.newFileCount,
     required this.deletedFileCount,
+    this.patchAlgorithm = 'xdelta3',
     required this.files,
   });
 
