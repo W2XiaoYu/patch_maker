@@ -383,16 +383,16 @@ Future<Map<String, dynamic>> _makePatchIsolate(Map<String, String> args) async {
     final patchFile = File(patchOutStr);
     patchFile.parent.createSync(recursive: true);
 
-    final ok = await Xdelta3Exe().encodeFile(
+    final result = await Xdelta3Exe().encodeFile(
       newFilePath: newFileStr,
       oldFilePath: oldFileStr,
       outputPatchPath: patchOutStr,
     );
 
-    if (!ok) {
+    if (!result.ok) {
       return {
         'action': 'error',
-        'error_message': 'xdelta3.exe 编码失败',
+        'error_message': 'xdelta3.exe 编码失败：${result.error}',
       };
     }
 

@@ -137,9 +137,30 @@ class PatchInstaller {
               continue;
             }
 
+            // 前置 SHA256 校验：installDir 里的源文件必须与生成补丁时一致
+            final expectedOldSha = fileMeta.oldFileSha256 ?? '';
+            if (expectedOldSha.isNotEmpty) {
+              final actualOldSha = await _fileSha256(oldFile.path);
+              if (actualOldSha != expectedOldSha) {
+                onProgress(
+                  '❌ [${i + 1}/${files.length}] 源文件已被修改，无法应用补丁: $relativePath\n'
+                  '   期望 SHA: ${expectedOldSha.substring(0, 16)}...\n'
+                  '   实际 SHA: ${actualOldSha.isEmpty ? "(空)" : '${actualOldSha.substring(0, 16)}...'}\n'
+                  '   说明: 当前安装目录的旧文件，与当初生成补丁时的旧文件不一致\n'
+                  '   常见原因: 这个 DLL 被第三方工具替换过（如 DLSS Swapper / Lossless Scaling），\n'
+                  '            或者补丁是针对另一个版本生成的',
+                  isError: true,
+                );
+                errorCount++;
+                continue;
+              }
+            }
+
             final tempOutput = File(
               path.join(tempDir.path, relativePath),
             );
+            // xdelta3.exe 不会自动创建多层目录，必须先建好父目录
+            await tempOutput.parent.create(recursive: true);
 
             final decodeResult = await compute(_decodePatchIsolate, {
               'old_file': oldFile.path,
@@ -238,16 +259,16 @@ Future<Map<String, dynamic>> _decodePatchIsolate(Map<String, dynamic> args) asyn
   final outputFilePath = args['output_file'] as String;
 
   try {
-    final ok = await Xdelta3Exe().decodeFile(
+    final result = await Xdelta3Exe().decodeFile(
       patchFilePath: patchFilePath,
       oldFilePath: oldFilePath,
       outputFilePath: outputFilePath,
     );
 
-    if (!ok) {
+    if (!result.ok) {
       return {
         'is_ok': false,
-        'error_message': 'xdelta3.exe 解码失败',
+        'error_message': 'xdelta3.exe 解码失败：${result.error}',
       };
     }
 

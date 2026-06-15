@@ -45,8 +45,9 @@ class Xdelta3Exe {
   /// Generate a VCDIFF delta: [newFilePath] relative to [oldFilePath],
   /// write to [outputPatchPath].
   ///
-  /// Returns true on success, false on error.
-  Future<bool> encodeFile({
+  /// Returns a record with [ok] and the captured stderr/exception text
+  /// (empty on success) so callers can surface the real reason to the UI.
+  Future<({bool ok, String error})> encodeFile({
     required String newFilePath,
     required String oldFilePath,
     required String outputPatchPath,
@@ -66,8 +67,12 @@ class Xdelta3Exe {
 
   /// Apply [patchFilePath] against [oldFilePath], write to [outputFilePath].
   ///
-  /// Returns true on success, false on error.
-  Future<bool> decodeFile({
+  /// Returns a record with [ok] and the captured stderr/exception text
+  /// (empty on success) so callers can surface the real reason to the UI.
+  ///
+  /// Note: 不加 -q，让 xdelta3 在失败时把具体错误（如 header error、
+  /// bad input）输出到 stderr — 我们只在 exit != 0 时展示 stderr。
+  Future<({bool ok, String error})> decodeFile({
     required String patchFilePath,
     required String oldFilePath,
     required String outputFilePath,
@@ -76,7 +81,6 @@ class Xdelta3Exe {
   }) async {
     return _run([
       '-f',
-      '-q',
       '-d',
       '-s',
       oldFilePath,
@@ -85,29 +89,65 @@ class Xdelta3Exe {
     ]);
   }
 
-  /// Run xdelta3.exe with [args], return true on exit code 0.
-  Future<bool> _run(List<String> args) async {
+  /// Run xdelta3.exe with [args]. Returns ok=true on exit code 0;
+  /// otherwise ok=false with the merged stderr/stdout text.
+  ///
+  /// 用 Process.start 拿原始字节，再用多级 fallback 解码 —— 因为
+  /// 中文 Windows 上 xdelta3.exe 的 stderr 是 GBK 编码（含中文路径），
+  /// 用 utf8 直接解会抛 FormatException 把真正的错误吞掉。
+  Future<({bool ok, String error})> _run(List<String> args) async {
     try {
       final exe = locateExe();
-      // Drain stderr/stdout so the child can't block on a full pipe.
-      // Output is normally empty thanks to -q.
-      final result = await Process.run(
+      final process = await Process.start(
         exe,
         args,
-        stderrEncoding: utf8,
-        stdoutEncoding: utf8,
         runInShell: false,
       );
-      if (result.exitCode != 0) {
-        stderr.writeln(
-          'xdelta3.exe failed (exit ${result.exitCode}): ${result.stderr}',
-        );
-        return false;
+
+      final stdoutFuture = process.stdout.fold<List<int>>(
+        <int>[],
+        (prev, chunk) => prev..addAll(chunk),
+      );
+      final stderrFuture = process.stderr.fold<List<int>>(
+        <int>[],
+        (prev, chunk) => prev..addAll(chunk),
+      );
+
+      final exitCode = await process.exitCode;
+      final stdoutBytes = await stdoutFuture;
+      final stderrBytes = await stderrFuture;
+
+      if (exitCode != 0) {
+        final err = _safeDecode(stderrBytes).trim();
+        final out = _safeDecode(stdoutBytes).trim();
+        final buf = StringBuffer();
+        if (err.isNotEmpty) buf.writeln(err);
+        if (out.isNotEmpty) buf.writeln(out);
+        final msg = 'xdelta3.exe exit=$exitCode: ${buf.toString().trim()}';
+        stderr.writeln(msg);
+        return (ok: false, error: msg);
       }
-      return true;
+      return (ok: true, error: '');
     } catch (e) {
-      stderr.writeln('xdelta3.exe invocation failed: $e');
-      return false;
+      final msg = 'xdelta3.exe invocation failed: $e';
+      stderr.writeln(msg);
+      return (ok: false, error: msg);
+    }
+  }
+
+  /// 多级解码：先 utf8（Linux/Mac），失败 fallback systemEncoding
+  /// （中文 Windows = GBK/cp936），再失败用 utf8 allowMalformed 兜底
+  /// （无效字节变 U+FFFD，至少不抛异常）。
+  String _safeDecode(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+    try {
+      return utf8.decode(bytes);
+    } catch (_) {
+      try {
+        return systemEncoding.decode(bytes);
+      } catch (_) {
+        return utf8.decode(bytes, allowMalformed: true);
+      }
     }
   }
 }
